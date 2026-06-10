@@ -9,29 +9,32 @@ description: >
 
 # Turning a plan into a behaviour specification
 
-The tests are the plan, expanded. The **plan** skill already authored a
-`describe()/it()` skeleton with a correctness oracle noted against each
-behaviour. Your job is to expand that skeleton into runnable testthat tests —
-not to invent new behaviour. If you find yourself testing something the plan
-didn't specify, that is a signal the plan is incomplete: stop and revisit it
-with the user.
+The tests are the plan, expanded. The **plan** skill specified, for each
+function, the behaviours it must exhibit and the *correctness basis* for each
+(an equation, an invariant, a reference, a round-trip, an edge case). Your job
+is to turn that raw material into runnable testthat specs: you own the
+`describe()/it()` structure and the concrete assertions; the plan owns the
+science. Do not invent behaviour the plan didn't specify — if you find yourself
+needing to, the plan is incomplete: stop and revisit it with the user.
 
 This skill covers the **workflow** of going plan → tests. For testthat
 mechanics — file layout, expectations, fixtures, snapshots, mocking, withr
 cleanup — defer to the **testing-r-packages** skill and only summarise here.
 
-## 1. Lift the skeleton into test files
+## 1. Construct the skeleton from the plan
 
 - One test file per code file: `R/{name}.R` → `tests/testthat/test-{name}.R`.
-- Copy each `describe()` block and its `it("...")` specs from the plan
-  verbatim. Keep the descriptions — they are the ubiquitous language that ties
-  tests back to the plan.
-- Specs whose behaviour isn't implemented yet stay as **pending** `it("...")`
-  with no body. They report as SKIPPED and serve as the work checklist the
-  implement skill burns down.
-- Where the plan marked a spec as **filling an existing coverage gap**, keep
-  that marking (a comment) so reviewers can tell new behaviour from
-  characterisation of existing behaviour.
+- One `describe("fn()", { ... })` per function the plan covers.
+- Turn each behaviour bullet in the plan into one `it("...")` whose
+  description restates the behaviour in plain language — this is the
+  ubiquitous language tying tests back to the plan. Behaviour, not
+  implementation.
+- Leave each `it("...")` **pending** (no body) at this stage. Pending specs
+  report as SKIPPED and become the checklist the implement skill burns down.
+- Add an `it()` for every edge case and every error condition the plan listed.
+- Where the plan **noted an existing coverage gap**, add those specs too and
+  mark them (a comment) as characterising *existing* behaviour, so reviewers
+  can tell them from the new work.
 
 ## 2. Test observable behaviour, not implementation
 
@@ -46,7 +49,9 @@ reviewable, and assert a **classed** condition where the plan specified one.
 
 ## 3. Make the correctness oracle concrete
 
-Each spec in the plan carries an oracle. Turn it into a real assertion:
+The plan states a correctness basis for each behaviour. Choose the matching
+oracle and turn it into a real assertion — picking the encoding, tolerance, and
+expected values is your job, not the plan's:
 
 - **Known-answer / analytic** — assert equality to the closed-form result.
   Use `expect_equal()` with an explicit `tolerance` for floating point;
