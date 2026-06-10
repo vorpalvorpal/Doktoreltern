@@ -22,6 +22,8 @@
         "./r-science/verify",
         "./r-science/benchmark-optimise",
         "./r-science/review",
+        "./posit-dev/critical-code-reviewer",
+        "./posit-dev/review-testing",
         "./r-science/r-oop",
         "./r-science/r-bayes"
       ]

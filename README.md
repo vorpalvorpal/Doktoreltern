@@ -16,7 +16,9 @@ A workflow spine and supporting knowledge skills for **science-centered** R pack
 - **[implement](./r-science/implement/)** - Orchestrate implementation by delegating coding to subagents stage by stage: baseline benchmark, turn pending specs green, defer behaviour-changing optimisations to the user
 - **[verify](./r-science/verify/)** - Staged quality gate returning READY / NOT READY, gating on correctness (behaviour specs pass) and cleanliness rather than a coverage percentage
 - **[benchmark-optimise](./r-science/benchmark-optimise/)** - Profile and benchmark with `bench`/`profvis`; behaviour-preserving optimisations only, with behaviour-changing approximations deferred as modelling decisions
-- **[review](./r-science/review/)** - Final review against the plan: plan conformance and scientific soundness, delegating general code- and test-quality review to the reviewer skills
+- **[review](./r-science/review/)** - Final review against the plan: plan conformance and scientific soundness, delegating general code- and test-quality review to the reviewer skills below
+- **[critical-code-reviewer](./posit-dev/critical-code-reviewer/)** - General adversarial code review (also in posit-dev); `review` delegates code-quality findings to it
+- **[review-testing](./posit-dev/review-testing/)** - General test-quality review (also in posit-dev); `review` delegates test-quality findings to it
 - **[r-oop](./r-science/r-oop/)** - Decide whether a problem needs OOP at all, then pick the right system (S7 preferred, then S3; vctrs for vector-like types)
 - **[r-bayes](./r-science/r-bayes/)** - Bayesian modelling with brms/Stan: DAG-based identification, justified priors, convergence as a hard gate, seeded reproducible fits
 
