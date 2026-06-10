@@ -106,6 +106,19 @@ lintr::lint_package()
   `R CMD check`). Use `profvis` to locate bottlenecks before optimising.
 - **GitHub**: use the `gh` CLI for issues, comments, and PRs.
 
+## Working with RTK
+
+Shell output is compressed by RTK before you see it. To get full, untruncated
+output on demand, run a command through `rtk proxy <command>` — it executes
+without filtering (still tracked).
+
+Treat compressed output with suspicion whenever an **exact value** matters —
+a failing test's expected/actual numbers, `bench` timings, a numerical warning
+(singularity, non-convergence, overflow), or an `R CMD check` / test summary
+where a dropped line hides a real problem. Re-run those via `rtk proxy …` and
+trust that output. Never accept a truncated number when correctness depends on
+it.
+
 ## Workflows
 
 These conventions plug into the r-science workflow spine:
