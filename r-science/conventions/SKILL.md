@@ -108,16 +108,15 @@ lintr::lint_package()
 
 ## Working with RTK
 
-Shell output is compressed by RTK before you see it. To get full, untruncated
-output on demand, run a command through `rtk proxy <command>` — it executes
-without filtering (still tracked).
+RTK compresses the output of the dev tools it recognises (git, docker, npm,
+cargo, pytest, jest, linters, …) before you see it. It has **no R filter** —
+`Rscript`, `R CMD check`, `bench`, `profvis`, and tests run through R all reach
+you in full, so routine R correctness output is safe to trust as-is.
 
-Treat compressed output with suspicion whenever an **exact value** matters —
-a failing test's expected/actual numbers, `bench` timings, a numerical warning
-(singularity, non-convergence, overflow), or an `R CMD check` / test summary
-where a dropped line hides a real problem. Re-run those via `rtk proxy …` and
-trust that output. Never accept a truncated number when correctness depends on
-it.
+When you need the full output of a tool RTK *does* compress, run it through
+`rtk proxy <command>` (raw, still tracked) or `rtk run <command>` (raw, no
+tracking). Don't accept a truncated value from a compressed tool when
+correctness depends on it.
 
 ## Workflows
 

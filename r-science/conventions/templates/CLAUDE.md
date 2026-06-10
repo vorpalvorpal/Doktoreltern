@@ -29,10 +29,9 @@ choice likely to cause significant performance issues.
 - Benchmarks: the `bench` package, under `bench/` (outside `R CMD check`).
   Use `profvis` for profiling when locating a bottleneck.
 - GitHub: use the `gh` CLI for issues, comments, and PRs.
-- RTK compresses shell output. When an exact value matters — a failing test's
-  numbers, `bench` timings, a numerical warning, an `R CMD check` summary —
-  re-run via `rtk proxy <command>` to get full output and trust that, not the
-  compressed view.
+- RTK compresses output for the tools it knows (git, docker, test runners,
+  linters) but NOT R — `Rscript`, `R CMD check`, and `bench` reach you in full.
+  For full output from a tool RTK does compress, use `rtk proxy <command>`.
 
 ## Workflows
 - Asked for a plan, design, or approach → follow the **plan** skill.
