@@ -6,6 +6,22 @@ Claude Skills extend Claude's capabilities with specialized knowledge and workfl
 
 ## Available Skills
 
+### R Science
+
+A workflow spine and supporting knowledge skills for **science-centered** R package development — where mathematical, statistical, physical, and biological correctness comes first and the code is functional by default. The skills chain together: **plan → tests → implement → verify → benchmark/optimise → review**.
+
+- **[conventions](./r-science/conventions/)** - Coding conventions for scientific R packages (correctness-first, functional by default, reproducible, referenced); ships a `CLAUDE.md` template for dropping into a package root
+- **[plan](./r-science/plan/)** - Correctness-first implementation planning that specifies behaviour and its correctness basis (equations, invariants, references, edge cases) precisely enough for tests to be derived from it
+- **[tests](./r-science/tests/)** - Turn an approved plan into an executable behaviour specification — describe/it tests with analytic/invariant/reference/round-trip oracles and seeded stochastic tests
+- **[implement](./r-science/implement/)** - Orchestrate implementation by delegating coding to subagents stage by stage: baseline benchmark, turn pending specs green, defer behaviour-changing optimisations to the user
+- **[verify](./r-science/verify/)** - Staged quality gate returning READY / NOT READY, gating on correctness (behaviour specs pass) and cleanliness rather than a coverage percentage
+- **[benchmark-optimise](./r-science/benchmark-optimise/)** - Profile and benchmark with `bench`/`profvis`; behaviour-preserving optimisations only, with behaviour-changing approximations deferred as modelling decisions
+- **[review](./r-science/review/)** - Final review against the plan: plan conformance and scientific soundness, delegating general code- and test-quality review to the reviewer skills below
+- **[critical-code-reviewer](./posit-dev/critical-code-reviewer/)** - General adversarial code review (also in posit-dev); `review` delegates code-quality findings to it
+- **[review-testing](./posit-dev/review-testing/)** - General test-quality review (also in posit-dev); `review` delegates test-quality findings to it
+- **[r-oop](./r-science/r-oop/)** - Decide whether a problem needs OOP at all, then pick the right system (S7 preferred, then S3; vctrs for vector-like types)
+- **[r-bayes](./r-science/r-bayes/)** - Bayesian modelling with brms/Stan: DAG-based identification, justified priors, convergence as a hard gate, seeded reproducible fits
+
 ### Posit Developer
 
 General-purpose developer skills useful across any language, project type, or context.
@@ -72,16 +88,16 @@ Install skills from this repository into any supported coding agent (Claude Code
 
 ```bash
 # List available skills without installing
-npx skills add posit-dev/skills --list
+npx skills add vorpalvorpal/skills --list
 
 # Install skills via an interactive menu
-npx skills add posit-dev/skills --all
+npx skills add vorpalvorpal/skills --all
 
 # Install specific skills by category name
-npx skills add posit-dev/skills --skill cli --skill lifecycle
+npx skills add vorpalvorpal/skills --skill cli --skill lifecycle
 
 # Install to Claude Code only, globally
-npx skills add posit-dev/skills --agent claude-code --global
+npx skills add vorpalvorpal/skills --agent claude-code --global
 ```
 
 ### Claude Code
@@ -91,7 +107,7 @@ npx skills add posit-dev/skills --agent claude-code --global
 Add this repository as a plugin marketplace in Claude Code:
 
 ```
-/plugin marketplace add posit-dev/skills
+/plugin marketplace add vorpalvorpal/skills
 ```
 
 Then browse and install the skill categories you need through the Claude Code UI.
@@ -101,13 +117,14 @@ Then browse and install the skill categories you need through the Claude Code UI
 Install specific skill categories directly:
 
 ```
-/plugin install posit-dev@posit-dev-skills
-/plugin install github@posit-dev-skills
-/plugin install open-source@posit-dev-skills
-/plugin install ggsql@posit-dev-skills
-/plugin install r-lib@posit-dev-skills
-/plugin install shiny@posit-dev-skills
-/plugin install quarto@posit-dev-skills
+/plugin install r-science@rjs-skills
+/plugin install posit-dev@rjs-skills
+/plugin install github@rjs-skills
+/plugin install open-source@rjs-skills
+/plugin install ggsql@rjs-skills
+/plugin install r-lib@rjs-skills
+/plugin install shiny@rjs-skills
+/plugin install quarto@rjs-skills
 ```
 
 Each command installs all skills in that category.
@@ -119,7 +136,7 @@ For customization or offline use:
 1. Clone this repository:
 
    ```bash
-   git clone https://github.com/posit-dev/skills.git
+   git clone https://github.com/vorpalvorpal/skills.git
    cd skills
    ```
 
@@ -164,6 +181,7 @@ This repository organizes skills into categories to make it easier to find and i
 
 | Category        | Description                                                 |
 | --------------- | ----------------------------------------------------------- |
+| **r-science**   | Science-centered R package workflow (plan, tests, implement, verify, benchmark, review) + R OOP and Bayesian skills |
 | **posit-dev**   | General-purpose developer skills (code review, architecture docs) |
 | **ggsql**     | ggsql query writing — a grammar of graphics for SQL                 |
 | **github**    | GitHub PR workflows (create PRs, address review threads, resolve threads) |
@@ -198,7 +216,7 @@ This repository is licensed under the MIT License. See [LICENSE](./LICENSE) for 
 
 ## Support
 
-If you have questions or encounter issues, check the [Claude Skills documentation](https://support.claude.com/en/articles/12512180-using-skills-in-claude) or [open an issue](https://github.com/posit-dev/skills/issues/new) on GitHub.
+If you have questions or encounter issues, check the [Claude Skills documentation](https://support.claude.com/en/articles/12512180-using-skills-in-claude) or [open an issue](https://github.com/vorpalvorpal/skills/issues/new) on GitHub.
 
 ---
 

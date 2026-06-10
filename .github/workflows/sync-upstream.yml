@@ -1,0 +1,85 @@
+name: Sync upstream (posit-dev/skills)
+
+# Monthly check for changes in the upstream Posit skills repo.
+# - If upstream has new commits and they merge cleanly, open a PR.
+# - If the merge conflicts, open an issue so a human can resolve it.
+# Conflicts, when they happen, are almost always in .claude-plugin/marketplace.json
+# and README.md (the only upstream files this fork edits).
+
+on:
+  schedule:
+    - cron: "0 6 1 * *"   # 06:00 UTC on the 1st of each month
+  workflow_dispatch: {}    # allow manual runs from the Actions tab
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/posit-dev/skills.git
+          git fetch upstream main
+
+      - name: Count new upstream commits
+        id: check
+        run: |
+          behind=$(git rev-list --count origin/main..upstream/main)
+          echo "behind=$behind" >> "$GITHUB_OUTPUT"
+          echo "Upstream is $behind commit(s) ahead of main."
+
+      - name: Attempt merge
+        if: steps.check.outputs.behind != '0'
+        id: merge
+        run: |
+          branch="sync/upstream-$(date +%Y%m%d)"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          git checkout -b "$branch" origin/main
+          if git merge --no-edit upstream/main; then
+            echo "result=clean" >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort
+            echo "result=conflict" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open PR (clean merge)
+        if: steps.check.outputs.behind != '0' && steps.merge.outputs.result == 'clean'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git push origin "${{ steps.merge.outputs.branch }}"
+          gh pr create \
+            --base main \
+            --head "${{ steps.merge.outputs.branch }}" \
+            --title "Sync upstream posit-dev/skills ($(date +%Y-%m-%d))" \
+            --body "Automated monthly sync. Upstream is ${{ steps.check.outputs.behind }} commit(s) ahead and merged cleanly. Review the diff (especially marketplace.json and README.md) before merging."
+
+      - name: Open issue (merge conflict)
+        if: steps.check.outputs.behind != '0' && steps.merge.outputs.result == 'conflict'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "Upstream sync needs manual merge ($(date +%Y-%m-%d))" \
+            --body "The monthly sync from posit-dev/skills hit merge conflicts (${{ steps.check.outputs.behind }} commit(s) behind). Resolve locally:
+
+          \`\`\`
+          git fetch upstream
+          git merge upstream/main
+          \`\`\`
+
+          Likely conflict files: .claude-plugin/marketplace.json and README.md. Everything under r-science/ is fork-only and should not conflict."

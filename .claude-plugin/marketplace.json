@@ -1,14 +1,33 @@
 {
-  "name": "posit-dev-skills",
+  "name": "rjs-skills",
   "owner": {
-    "name": "Garrick Aden-Buie (Posit, PBC)",
-    "email": "garrick@posit.co"
+    "name": "Robin Shannon",
+    "email": "rjs@robinshannon.net"
   },
   "metadata": {
-    "description": "A collection of Claude Skills for Posit development teams, and open-source users including tools for tidyverse workflows.",
+    "description": "Personal fork of the Posit Claude Skills, refocused on science-centered R package development. Adds the r-science workflow spine; upstream Posit skills retained.",
     "version": "0.1.0"
   },
   "plugins": [
+    {
+      "name": "r-science",
+      "description": "A workflow spine and knowledge skills for science-centered R package development: plan -> tests -> implement -> verify -> benchmark/optimise -> review, correctness-first and functional by default",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./r-science/conventions",
+        "./r-science/plan",
+        "./r-science/tests",
+        "./r-science/implement",
+        "./r-science/verify",
+        "./r-science/benchmark-optimise",
+        "./r-science/review",
+        "./posit-dev/critical-code-reviewer",
+        "./posit-dev/review-testing",
+        "./r-science/r-oop",
+        "./r-science/r-bayes"
+      ]
+    },
     {
       "name": "posit-dev",
       "description": "General-purpose developer skills useful across any language, project type, or context",
