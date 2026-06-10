@@ -1,11 +1,11 @@
 {
-  "name": "posit-dev-skills",
+  "name": "rjs-skills",
   "owner": {
-    "name": "Garrick Aden-Buie (Posit, PBC)",
-    "email": "garrick@posit.co"
+    "name": "Robin Shannon",
+    "email": "rjs@robinshannon.net"
   },
   "metadata": {
-    "description": "A collection of Claude Skills for Posit development teams, and open-source users including tools for tidyverse workflows.",
+    "description": "Personal fork of the Posit Claude Skills, refocused on science-centered R package development. Adds the r-science workflow spine; upstream Posit skills retained.",
     "version": "0.1.0"
   },
   "plugins": [

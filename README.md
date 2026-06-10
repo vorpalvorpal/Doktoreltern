@@ -88,16 +88,16 @@ Install skills from this repository into any supported coding agent (Claude Code
 
 ```bash
 # List available skills without installing
-npx skills add posit-dev/skills --list
+npx skills add vorpalvorpal/skills --list
 
 # Install skills via an interactive menu
-npx skills add posit-dev/skills --all
+npx skills add vorpalvorpal/skills --all
 
 # Install specific skills by category name
-npx skills add posit-dev/skills --skill cli --skill lifecycle
+npx skills add vorpalvorpal/skills --skill cli --skill lifecycle
 
 # Install to Claude Code only, globally
-npx skills add posit-dev/skills --agent claude-code --global
+npx skills add vorpalvorpal/skills --agent claude-code --global
 ```
 
 ### Claude Code
@@ -107,7 +107,7 @@ npx skills add posit-dev/skills --agent claude-code --global
 Add this repository as a plugin marketplace in Claude Code:
 
 ```
-/plugin marketplace add posit-dev/skills
+/plugin marketplace add vorpalvorpal/skills
 ```
 
 Then browse and install the skill categories you need through the Claude Code UI.
@@ -117,14 +117,14 @@ Then browse and install the skill categories you need through the Claude Code UI
 Install specific skill categories directly:
 
 ```
-/plugin install r-science@posit-dev-skills
-/plugin install posit-dev@posit-dev-skills
-/plugin install github@posit-dev-skills
-/plugin install open-source@posit-dev-skills
-/plugin install ggsql@posit-dev-skills
-/plugin install r-lib@posit-dev-skills
-/plugin install shiny@posit-dev-skills
-/plugin install quarto@posit-dev-skills
+/plugin install r-science@rjs-skills
+/plugin install posit-dev@rjs-skills
+/plugin install github@rjs-skills
+/plugin install open-source@rjs-skills
+/plugin install ggsql@rjs-skills
+/plugin install r-lib@rjs-skills
+/plugin install shiny@rjs-skills
+/plugin install quarto@rjs-skills
 ```
 
 Each command installs all skills in that category.
@@ -136,7 +136,7 @@ For customization or offline use:
 1. Clone this repository:
 
    ```bash
-   git clone https://github.com/posit-dev/skills.git
+   git clone https://github.com/vorpalvorpal/skills.git
    cd skills
    ```
 
@@ -216,7 +216,7 @@ This repository is licensed under the MIT License. See [LICENSE](./LICENSE) for 
 
 ## Support
 
-If you have questions or encounter issues, check the [Claude Skills documentation](https://support.claude.com/en/articles/12512180-using-skills-in-claude) or [open an issue](https://github.com/posit-dev/skills/issues/new) on GitHub.
+If you have questions or encounter issues, check the [Claude Skills documentation](https://support.claude.com/en/articles/12512180-using-skills-in-claude) or [open an issue](https://github.com/vorpalvorpal/skills/issues/new) on GitHub.
 
 ---
 
