@@ -157,3 +157,10 @@ skills read.
 If major issues surface while drafting or editing the plan — especially a
 scientific one — go back to the whiteboard rather than doubling down on an
 incorrect approach.
+
+## Next step
+
+When the plan is recorded and you're both satisfied, surface the next command
+so the user doesn't have to recall it — ask whether to proceed:
+
+> Plan recorded. Run `/tests` to turn it into the behaviour spec?

@@ -115,3 +115,13 @@ Use `file:line` references for every finding. "Approve" means no blocking
 issues after a rigorous review, not perfection. Hand the verdict and the
 divergence list back to the `implement` skill, which presents them to the user
 and drives the merge/close decision — `review` never merges on its own.
+
+## Next step
+
+After delivering the verdict, surface the user's next move rather than leaving
+them to recall it:
+
+> - If there are findings to address, point back to the relevant phase command
+>   (`/implement` to fix code, `/tests` to add a missing spec, …).
+> - If approved, the merge/close decision lives in `/implement`'s final
+>   section — ask whether to proceed there.

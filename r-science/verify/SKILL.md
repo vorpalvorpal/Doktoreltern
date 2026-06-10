@@ -131,3 +131,13 @@ Failure case lists each blocking issue by gate, then `Verdict: NOT READY`.
 Fix all blockers and re-run. For a deeper pass against the plan (divergences,
 design, scientific soundness), hand off to the `review` skill — `verify` is the
 gate, `review` is the judgement.
+
+## Next step
+
+This only applies when `verify` was run on its own — inside the `implement`
+loop it simply returns control without prompting. When the verdict is **READY**,
+surface the next move:
+
+> READY. Continue — commit this stage, or run the next phase command?
+
+When **NOT READY**, list the blockers and stay put until they're fixed.

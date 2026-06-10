@@ -124,5 +124,13 @@ devtools::test()
   you have found a pre-existing bug — surface it to the user rather than
   silently adjusting the test.
 
-Hand the suite to the **implement** skill: the pending specs are the
-behaviour checklist it implements and turns green, stage by stage.
+The pending specs are the behaviour checklist the implement step turns green,
+stage by stage.
+
+## Next step
+
+Once the behaviour spec is written and failing for the right reasons, offer the
+next command:
+
+> Behaviour spec ready (N pending specs). Run `/implement` to start turning
+> them green?

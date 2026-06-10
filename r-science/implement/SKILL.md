@@ -164,3 +164,11 @@ When all stages are committed and green:
 4. Commit per stage, not all at the end. Stage specific files.
 5. Never force-push; never amend — new commits for fixes.
 6. Keep the plan file and tracking doc updated as you go.
+
+## Next step
+
+After the final report, surface the next command rather than assuming it:
+
+> Implementation complete (all specs green). Run `/benchmark-optimise` to work
+> through the deferred-optimisations list and performance, then `/review` for
+> the final pass?

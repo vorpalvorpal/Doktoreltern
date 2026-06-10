@@ -109,3 +109,10 @@ skill captures a baseline before each stage and re-benchmarks after. Use this
 skill to write those benchmarks, to investigate any bottleneck implement
 surfaces, and to evaluate the deferred-optimisations list with the user once
 the behaviour is correct and committed.
+
+## Next step
+
+When benchmarking and optimisation are done, offer the next command:
+
+> Performance work complete. Run `/review` for the final review against the
+> plan?
