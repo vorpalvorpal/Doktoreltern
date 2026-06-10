@@ -6,6 +6,20 @@ Claude Skills extend Claude's capabilities with specialized knowledge and workfl
 
 ## Available Skills
 
+### R Science
+
+A workflow spine and supporting knowledge skills for **science-centered** R package development — where mathematical, statistical, physical, and biological correctness comes first and the code is functional by default. The skills chain together: **plan → tests → implement → verify → benchmark/optimise → review**.
+
+- **[conventions](./r-science/conventions/)** - Coding conventions for scientific R packages (correctness-first, functional by default, reproducible, referenced); ships a `CLAUDE.md` template for dropping into a package root
+- **[plan](./r-science/plan/)** - Correctness-first implementation planning that specifies behaviour and its correctness basis (equations, invariants, references, edge cases) precisely enough for tests to be derived from it
+- **[tests](./r-science/tests/)** - Turn an approved plan into an executable behaviour specification — describe/it tests with analytic/invariant/reference/round-trip oracles and seeded stochastic tests
+- **[implement](./r-science/implement/)** - Orchestrate implementation by delegating coding to subagents stage by stage: baseline benchmark, turn pending specs green, defer behaviour-changing optimisations to the user
+- **[verify](./r-science/verify/)** - Staged quality gate returning READY / NOT READY, gating on correctness (behaviour specs pass) and cleanliness rather than a coverage percentage
+- **[benchmark-optimise](./r-science/benchmark-optimise/)** - Profile and benchmark with `bench`/`profvis`; behaviour-preserving optimisations only, with behaviour-changing approximations deferred as modelling decisions
+- **[review](./r-science/review/)** - Final review against the plan: plan conformance and scientific soundness, delegating general code- and test-quality review to the reviewer skills
+- **[r-oop](./r-science/r-oop/)** - Decide whether a problem needs OOP at all, then pick the right system (S7 preferred, then S3; vctrs for vector-like types)
+- **[r-bayes](./r-science/r-bayes/)** - Bayesian modelling with brms/Stan: DAG-based identification, justified priors, convergence as a hard gate, seeded reproducible fits
+
 ### Posit Developer
 
 General-purpose developer skills useful across any language, project type, or context.
@@ -101,6 +115,7 @@ Then browse and install the skill categories you need through the Claude Code UI
 Install specific skill categories directly:
 
 ```
+/plugin install r-science@posit-dev-skills
 /plugin install posit-dev@posit-dev-skills
 /plugin install github@posit-dev-skills
 /plugin install open-source@posit-dev-skills
@@ -164,6 +179,7 @@ This repository organizes skills into categories to make it easier to find and i
 
 | Category        | Description                                                 |
 | --------------- | ----------------------------------------------------------- |
+| **r-science**   | Science-centered R package workflow (plan, tests, implement, verify, benchmark, review) + R OOP and Bayesian skills |
 | **posit-dev**   | General-purpose developer skills (code review, architecture docs) |
 | **ggsql**     | ggsql query writing — a grammar of graphics for SQL                 |
 | **github**    | GitHub PR workflows (create PRs, address review threads, resolve threads) |
