@@ -82,10 +82,14 @@ Write the plan with this structure:
    Cite specific equations/sections the implementation must match.
 3. **Requirements** — the observable behaviour the change must deliver.
 4. **Affected files** — each file to add or change, and what changes.
-5. **Phased stages** — ordered, incremental stages. Each stage names its
-   target files, the concrete action, the reasoning, and any prerequisite
-   stages. Mark which stages are independent (safe to parallelise) and which
-   are strictly sequential — the implement skill uses this.
+5. **Phased stages** — ordered, incremental stages. **A stage is one coherent,
+   independently-testable behaviour (or a small tight cluster), sized so a
+   single subagent can implement it in one pass: too big and it stalls
+   (`BLOCKED`), too small and orchestration overhead dominates. Prefer stages
+   that touch one file, so independent ones can run in parallel.** Each stage
+   names its target files, the concrete action, the reasoning, and any
+   prerequisite stages. Mark which stages are independent (safe to parallelise)
+   and which are strictly sequential — the implement skill uses this.
 6. **Behaviour and correctness basis** — see section 4. This is the heart of
    the plan.
 7. **Benchmark plan** — see section 5.

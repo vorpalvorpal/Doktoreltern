@@ -45,6 +45,12 @@ git status --short
   If the rebase conflicts, stop and tell the user — never auto-resolve.
 - Pre-existing uncommitted changes you didn't make: ask whether to stash,
   commit, or proceed.
+- **Optional: isolate in a worktree.** For risky or long work, or to enable
+  parallel subagents, offer to work in a git worktree. With the user's consent:
+  `git worktree add ../<pkg>-<branch> -b <branch>`, `cd` in, then establish a
+  clean **R baseline** (`devtools::test()`) before starting. Prefer a native
+  worktree command if your environment provides one over raw `git worktree`.
+  Skip silently if the user declines or the sandbox forbids it.
 
 ## 2. Map the plan to stages and specs
 
@@ -129,8 +135,19 @@ dispatch, not a fix-up.
 ### 3e. Turn the specs green (debug loop)
 
 Run the stage's tests. The previously-pending specs must now pass for the right
-reason. If they don't, debug via the **`verify`** skill: isolate, fix
-(delegating if substantial), re-run.
+reason. If they don't, **debug systematically — don't symptom-chase:**
+
+1. **Root cause first.** Read the full error/output, reproduce it reliably,
+   review what just changed. No fix before you can name the cause.
+2. **Compare to working code.** Diff against a similar passing case.
+3. **One hypothesis, smallest test.** Change the least thing that confirms or
+   kills it; don't stack speculative fixes.
+4. **Fix the cause, re-run, confirm.** After **3 failed attempts, stop and
+   question the approach/architecture** instead of trying a fourth.
+
+(For the fuller method, superpowers' `systematic-debugging` skill — when it
+calls for a failing test, add a behaviour spec via our `tests` approach, not
+RED-GREEN.) The **`verify`** skill's evidence rule applies throughout.
 
 When a delegated attempt fails the tests, **bump one model tier and retry once**
 (e.g. haiku → sonnet); if it still fails, **stop and bring it to the user**
