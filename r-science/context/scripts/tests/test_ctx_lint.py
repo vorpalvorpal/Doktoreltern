@@ -43,19 +43,16 @@ def severities(findings, level="finding"):
 # I1 — Part-of ↔ platform sub-issue edge (best-effort)
 # --------------------------------------------------------------------------
 class TestI1:
-    @pytest.mark.skip(reason=CORE)
     def test_clean_when_edge_matches_text(self, two_node_tree):
         model, platform = model_and_platform(two_node_tree)
         assert ctx_core.CHECKS["I1"](model, platform) == []
 
-    @pytest.mark.skip(reason=CORE)
     def test_finding_when_edge_missing_and_settable(self, two_node_tree):
         two_node_tree["subissue_edges"] = set()
         two_node_tree["settable"] = True
         model, platform = model_and_platform(two_node_tree)
         assert severities(ctx_core.CHECKS["I1"](model, platform), "finding")
 
-    @pytest.mark.skip(reason=CORE)
     def test_info_not_finding_when_edge_unsettable(self, two_node_tree):
         """Missing edge in an environment that can't set one is info, not failure."""
         two_node_tree["subissue_edges"] = set()
@@ -70,13 +67,11 @@ class TestI1:
 # I2 — aspect marker ↔ aspect:* label, both directions
 # --------------------------------------------------------------------------
 class TestI2:
-    @pytest.mark.skip(reason=CORE)
     def test_finding_when_text_aspect_has_no_label(self, two_node_tree):
         two_node_tree["labels"][17] = set()          # drop aspect:numerics label
         model, platform = model_and_platform(two_node_tree)
         assert severities(ctx_core.CHECKS["I2"](model, platform))
 
-    @pytest.mark.skip(reason=CORE)
     def test_finding_when_label_has_no_text_aspect(self, two_node_tree):
         two_node_tree["labels"][17] = {"aspect:numerics", "aspect:io"}  # io unmarked
         model, platform = model_and_platform(two_node_tree)
@@ -87,7 +82,6 @@ class TestI2:
 # I3 — exactly one tree, no cycles (cycle detection is ours)
 # --------------------------------------------------------------------------
 class TestI3:
-    @pytest.mark.skip(reason=CORE)
     def test_detects_a_cycle(self):
         data = {
             "bodies": {16: "🧩 Part-of: #17\n", 17: "🧩 Part-of: #16\n"},
@@ -97,7 +91,6 @@ class TestI3:
         model, platform = model_and_platform(data)
         assert severities(ctx_core.CHECKS["I3"](model, platform))
 
-    @pytest.mark.skip(reason=CORE)
     def test_finding_when_node_has_two_parents(self):
         data = {
             "bodies": {17: "🧩 Part-of: #16, #18\n"},
@@ -111,14 +104,12 @@ class TestI3:
 # I4 — closed-completed parent ⇒ all children closed-completed
 # --------------------------------------------------------------------------
 class TestI4:
-    @pytest.mark.skip(reason=CORE)
     def test_finding_when_completed_parent_has_open_child(self, two_node_tree):
         two_node_tree["states"][16] = ("closed", "completed")
         two_node_tree["states"][17] = ("open", None)
         model, platform = model_and_platform(two_node_tree)
         assert severities(ctx_core.CHECKS["I4"](model, platform))
 
-    @pytest.mark.skip(reason=CORE)
     def test_clean_when_completed_parent_has_completed_child(self, two_node_tree):
         two_node_tree["states"][16] = ("closed", "completed")
         two_node_tree["states"][17] = ("closed", "completed")
@@ -130,7 +121,6 @@ class TestI4:
 # I5 — Boundary markers live only on parents, name only that parent's children
 # --------------------------------------------------------------------------
 class TestI5:
-    @pytest.mark.skip(reason=CORE)
     def test_finding_when_boundary_on_a_leaf(self):
         data = {
             "bodies": {17: "🧩 Part-of: #16\n🧱 Boundary: #18\n"},  # 17 has no children
@@ -139,7 +129,6 @@ class TestI5:
         model, platform = model_and_platform(data)
         assert severities(ctx_core.CHECKS["I5"](model, platform))
 
-    @pytest.mark.skip(reason=CORE)
     def test_finding_when_boundary_names_a_non_child(self):
         data = {
             "bodies": {16: "🧱 Boundary: #99\n", 17: "🧩 Part-of: #16\n"},
@@ -161,13 +150,11 @@ class TestI6:
         return {"bodies": bodies, "states": {}, "subissue_edges": set(),
                 "labels": {}, "settable": True}
 
-    @pytest.mark.skip(reason=CORE)
     def test_warning_at_depth_seven(self):
         model, platform = model_and_platform(self._chain(7))
         assert severities(ctx_core.CHECKS["I6"](model, platform), "warning")
         assert severities(ctx_core.CHECKS["I6"](model, platform), "finding") == []
 
-    @pytest.mark.skip(reason=CORE)
     def test_finding_beyond_depth_eight(self):
         model, platform = model_and_platform(self._chain(9))
         assert severities(ctx_core.CHECKS["I6"](model, platform), "finding")
@@ -177,7 +164,6 @@ class TestI6:
 # I7 — Design: #N points at an existing design node
 # --------------------------------------------------------------------------
 class TestI7:
-    @pytest.mark.skip(reason=CORE)
     def test_finding_when_design_ref_is_dangling(self):
         data = {
             "bodies": {30: "📐 Design: #999\n"},   # #999 absent
@@ -191,7 +177,6 @@ class TestI7:
 # I8 — line-leading bare keyword without its emoji → finding, no auto-insert
 # --------------------------------------------------------------------------
 class TestI8:
-    @pytest.mark.skip(reason=CORE)
     def test_flags_a_sigil_less_keyword(self):
         data = {
             "bodies": {17: "Part-of: #16\n"},   # keyword, no emoji
@@ -201,7 +186,6 @@ class TestI8:
         result = ctx_core.CHECKS["I8"](model, platform)
         assert severities(result)
 
-    @pytest.mark.skip(reason=CORE)
     def test_does_not_auto_insert_the_emoji(self):
         """The linter flags the repair; it must never invent the marker."""
         data = {
