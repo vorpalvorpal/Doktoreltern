@@ -1,6 +1,6 @@
-# Contributing to Posit Claude Skills
+# Contributing to the r-science skills
 
-Thank you for your interest in contributing to the Posit Claude Skills repository! This document provides guidelines for creating and submitting new skills.
+Thank you for your interest in contributing! This document provides guidelines for creating and submitting new skills for the science-centered R package development workflow.
 
 ## Quick Start
 
@@ -10,26 +10,11 @@ Thank you for your interest in contributing to the Posit Claude Skills repositor
 
 ## Creating a New Skill
 
-### 1. Choose the Right Category
+### 1. Confirm it belongs here
 
-Determine which category your skill belongs to:
+This repository holds the science-centered R package development skills, all under `r-science/` in the single `r-science` plugin. New skills should support that workflow (planning, testing, implementation, verification, benchmarking, review, and the scientific-modelling knowledge skills).
 
-| Category | Description |
-|----------|-------------|
-| **posit-dev** | General-purpose developer skills (code review, architecture docs) |
-| **open-source** | Open-source R/Python package workflows (releases, changelogs) |
-| **r-lib** | R package development with the r-lib ecosystem |
-| **shiny** | Shiny app development and deployment |
-| **quarto** | Quarto document creation and publishing |
-
-Other ideas for categories include:
-
-| Category | Description |
-|----------|-------------|
-| **tidyverse** | Tidyverse-specific package development |
-| **connect** | Posit Connect deployment and management |
-
-Feel free to propose new categories if needed.
+General-purpose R, GitHub, Shiny, Quarto, and publishing skills are **not** maintained here — they come from the upstream [Posit Claude Skills](https://github.com/posit-dev/skills) marketplace, which `r-science` declares as a dependency. If your skill belongs there, contribute it upstream instead.
 
 ### 2. Skill Structure
 
@@ -48,7 +33,7 @@ category-name/
         └── template.md
 ```
 
-**Note**: Do NOT create a README.md within individual skill directories. Documentation about skill organization, design principles, or resources should go in the skill category's README.md (e.g., `open-source/README.md`).
+**Note**: Do NOT create a README.md within individual skill directories. Documentation about skill organization, design principles, or resources should go in the `r-science/README.md`.
 
 Runnable R scripts should start with a shebang line, include internal usage documentation, use minimal package dependencies, and error if required packages are missing.
 
@@ -187,55 +172,25 @@ Create your SKILL.md and any supporting files following the structure above.
 
 ### 4. Update marketplace.json
 
-Add your skill to the appropriate category plugin in `.claude-plugin/marketplace.json`.
-
-Skills are organized by category plugins. Find the plugin that matches your skill's category and add your skill path to its `skills` array:
+Add your skill's path to the `skills` array of the single `r-science` plugin in `.claude-plugin/marketplace.json`:
 
 ```json
 {
-  "name": "category",
-  "description": "Collection of skills for [category purpose]",
+  "name": "r-science",
   "source": "./",
   "strict": false,
   "skills": [
-    "./existing-category/existing-skill",
-    "./your-category/your-skill-name"  // Add your skill here
+    "./r-science/review",
+    "./r-science/your-skill-name"  // Add your skill here
   ]
 }
 ```
 
-**Example**: If you're adding a skill to the open-source category:
-
-```json
-{
-  "name": "open-source",
-  "description": "Collection of skills for general open-source package development and maintenance, including release post creation and changelog management",
-  "source": "./",
-  "strict": false,
-  "skills": [
-    "./open-source/release-post",
-    "./open-source/your-new-skill"  // Your new skill
-  ]
-}
-```
-
-**If creating a new category**: Add a new plugin entry to the `plugins` array:
-
-```json
-{
-  "name": "your-category",
-  "description": "Collection of skills for [category purpose]",
-  "source": "./",
-  "strict": false,
-  "skills": [
-    "./your-category/your-skill-name"
-  ]
-}
-```
+To depend on an upstream Posit skill rather than re-implementing it, do not copy it here — add its plugin to the `r-science` plugin's `dependencies` array with `"marketplace": "posit-dev-skills"`, and make sure that marketplace is listed in the top-level `allowCrossMarketplaceDependenciesOn` allowlist.
 
 ### 5. Update the Skill Category README (Optional)
 
-You may optionally document your skill in the skill category's README.md (e.g., `open-source/README.md`, `r-lib/README.md`). This is where you can add:
+You may optionally document your skill in `r-science/README.md`. This is where you can add:
 
 - Notes about your skill's organization or structure
 - Design principles and architectural decisions
@@ -310,7 +265,7 @@ Your PR description should include:
 
 ## Code of Conduct
 
-This project follows Posit's Code of Conduct. By participating, you agree to:
+By participating, you agree to:
 
 - Be respectful and inclusive
 - Welcome newcomers
