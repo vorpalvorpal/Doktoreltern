@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repository Is
 
-A collection of Claude Skills published by Posit PBC. Skills are structured markdown files that teach Claude specialized workflows (e.g., Shiny app development, R package testing, GitHub PR workflows). There is no application code to build, compile, or deploy — the primary artifacts are Markdown files consumed directly by Claude's skill system.
+A collection of Claude Skills for **science-centered R package development** — the `r-science` workflow spine and its supporting skills. Skills are structured markdown files that teach Claude specialized workflows. There is no application code to build, compile, or deploy — the primary artifacts are Markdown files consumed directly by Claude's skill system.
+
+The general-purpose R, GitHub, and publishing skills the workflow builds on are **not** in this repository: they live in the upstream [Posit Claude Skills](https://github.com/posit-dev/skills) marketplace (`posit-dev-skills`) and are pulled in as plugin **dependencies** declared in `.claude-plugin/marketplace.json`. This repository was previously a fork of that one; it no longer is.
 
 ## Utility Script
 
@@ -12,9 +14,9 @@ The only runnable utility is `count-skill-tokens.py`, which reports line and tok
 
 ```bash
 # Requires uv
-./count-skill-tokens.py shiny/shiny-bslib
+./count-skill-tokens.py r-science/plan
 # or
-uv run count-skill-tokens.py r-lib/cli
+uv run count-skill-tokens.py r-science/review
 ```
 
 Warns when `SKILL.md` exceeds **5,000 tokens / 500 lines**, or when the skill `description` frontmatter exceeds **100 tokens**.
@@ -51,33 +53,25 @@ The body is instructions written **for Claude**, not end users — imperative, s
 
 ## Registering a New Skill
 
-After creating the skill directory, add it to the appropriate plugin in `.claude-plugin/marketplace.json`:
+There is a single plugin, `r-science`. After creating the skill directory under `r-science/`, add its path to that plugin's `skills` array in `.claude-plugin/marketplace.json`:
 
 ```json
 {
-  "name": "open-source",
+  "name": "r-science",
   "skills": [
-    "./open-source/release-post",
-    "./open-source/your-new-skill"   ← add here
+    "./r-science/review",
+    "./r-science/your-new-skill"   ← add here
   ]
 }
 ```
 
-If a skill spans multiple categories (like `brand-yml` for both Shiny and Quarto), add its path to multiple plugin `skills` arrays. The `source` field is always `"./"` (repo root).
+The `source` field is always `"./"` (repo root). When the new skill is part of the workflow spine, update the skill list in the root `README.md` to match.
 
-When adding a new plugin to `marketplace.json`, also update the root `README.md` "Method 2: Direct Installation" section so it lists the `/plugin install` command for every plugin. All plugins in `marketplace.json` must have a corresponding install line in the README.
+To rely on a skill from the upstream Posit marketplace, do **not** copy it here — add its plugin to the `dependencies` array of the `r-science` plugin (with `"marketplace": "posit-dev-skills"`), and ensure that marketplace name is present in the top-level `allowCrossMarketplaceDependenciesOn` allowlist.
 
-## Skill Categories
+## Skills
 
-| Category | Purpose |
-|----------|---------|
-| `posit-dev/` | General developer skills (code review, architecture docs) |
-| `github/` | PR creation and review thread workflows |
-| `open-source/` | R/Python package release and changelog workflows |
-| `r-lib/` | R package development with the r-lib ecosystem |
-| `shiny/` | Shiny app development |
-| `quarto/` | Quarto document authoring |
-| `brand-yml/` | Shared skill registered under both `shiny` and `quarto` plugins |
+All skills live under `r-science/` and belong to the single `r-science` plugin: the workflow spine (`conventions`, `whiteboard`, `plan`, `tests`, `implement`, `verify`, `benchmark-optimise`, `review`) plus `r-oop` and `r-bayes`. General developer, GitHub, r-lib, `open-source`, `ggsql`, `shiny`, and `quarto` skills are upstream dependencies, not part of this repository — see [What This Repository Is](#what-this-repository-is).
 
 ## Key Conventions
 

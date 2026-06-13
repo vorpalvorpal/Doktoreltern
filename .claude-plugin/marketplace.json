@@ -5,17 +5,19 @@
     "email": "rjs@robinshannon.net"
   },
   "metadata": {
-    "description": "Personal fork of the Posit Claude Skills, refocused on science-centered R package development. Adds the r-science workflow spine; upstream Posit skills retained.",
-    "version": "0.1.0"
+    "description": "Science-centered R package development skills. The r-science workflow spine (whiteboard -> plan -> tests -> implement -> verify -> benchmark/optimise -> review, correctness-first and functional by default), depending on the upstream Posit skills for general-purpose R, GitHub, and publishing workflows.",
+    "version": "0.2.0"
   },
+  "allowCrossMarketplaceDependenciesOn": ["posit-dev-skills"],
   "plugins": [
     {
       "name": "r-science",
-      "description": "Science-centered R package development as a complete toolkit. The r-science workflow spine (plan -> tests -> implement -> verify -> benchmark/optimise -> review, correctness-first and functional by default) plus every other skill in this repo, so a single install pulls in the whole set.",
+      "description": "Science-centered R package development. The r-science workflow spine (whiteboard -> plan -> tests -> implement -> verify -> benchmark/optimise -> review, correctness-first and functional by default) plus R OOP and Bayesian skills. Depends on the upstream Posit plugins for general developer, GitHub, r-lib, and publishing skills.",
       "source": "./",
       "strict": false,
       "skills": [
         "./r-science/conventions",
+        "./r-science/whiteboard",
         "./r-science/plan",
         "./r-science/tests",
         "./r-science/implement",
@@ -23,113 +25,16 @@
         "./r-science/benchmark-optimise",
         "./r-science/review",
         "./r-science/r-oop",
-        "./r-science/r-bayes",
-        "./posit-dev/critical-code-reviewer",
-        "./posit-dev/review-testing",
-        "./posit-dev/describe-design",
-        "./posit-dev/implement",
-        "./posit-dev/working-on",
-        "./r-lib/testing-r-packages",
-        "./r-lib/cli",
-        "./r-lib/cran-extrachecks",
-        "./r-lib/lifecycle",
-        "./r-lib/r-package-development",
-        "./r-lib/r-cli-app",
-        "./r-lib/mirai",
-        "./alt-text",
-        "./github/pr-create",
-        "./github/pr-threads-address",
-        "./github/pr-threads-resolve",
-        "./open-source/release-post",
-        "./open-source/create-release-checklist",
-        "./quarto/quarto-authoring",
-        "./brand-yml",
-        "./shiny/shiny-bslib",
-        "./shiny/shiny-bslib-theming",
-        "./ggsql/ggsql",
-        "./open-source/maintainer-decline",
-        "./r-science/whiteboard"
-      ]
-    },
-    {
-      "name": "posit-dev",
-      "description": "General-purpose developer skills useful across any language, project type, or context",
-      "source": "./",
-      "strict": false,
-      "skills": [
-        "./posit-dev/critical-code-reviewer",
-        "./posit-dev/describe-design",
-        "./posit-dev/implement",
-        "./posit-dev/review-testing",
-        "./posit-dev/working-on"
-      ]
-    },
-    {
-      "name": "github",
-      "description": "Skills for GitHub pull request workflows — creating PRs, addressing review feedback, and resolving threads",
-      "source": "./",
-      "strict": false,
-      "skills": [
-        "./github/pr-create",
-        "./github/pr-threads-address",
-        "./github/pr-threads-resolve"
-      ]
-    },
-    {
-      "name": "open-source",
-      "description": "Collection of skills for open-source R and Python package developers",
-      "source": "./",
-      "strict": false,
-      "skills": [
-        "./open-source/release-post",
-        "./open-source/create-release-checklist"
-      ]
-    },
-    {
-      "name": "r-lib",
-      "description": "Collection of skills for R package developers",
-      "source": "./",
-      "strict": false,
-      "skills": [
-        "./r-lib/testing-r-packages",
-        "./r-lib/cli",
-        "./r-lib/cran-extrachecks",
-        "./r-lib/lifecycle",
-        "./r-lib/r-package-development",
-        "./r-lib/r-cli-app",
-        "./r-lib/mirai",
-        "./alt-text"
-      ]
-    },
-    {
-      "name": "ggsql",
-      "description": "Skills for writing ggsql queries — a grammar of graphics for SQL",
-      "source": "./",
-      "strict": false,
-      "skills": [
-        "./ggsql/ggsql"
-      ]
-    },
-    {
-      "name": "shiny",
-      "description": "Collection of skills for Shiny app development",
-      "source": "./",
-      "strict": false,
-      "skills": [
-        "./brand-yml",
-        "./shiny/shiny-bslib",
-        "./shiny/shiny-bslib-theming"
-      ]
-    },
-    {
-      "name": "quarto",
-      "description": "Collection of skills for Quarto document creation",
-      "source": "./",
-      "strict": false,
-      "skills": [
-        "./brand-yml",
-        "./quarto/quarto-authoring",
-        "./alt-text"
+        "./r-science/r-bayes"
+      ],
+      "dependencies": [
+        { "name": "posit-dev", "marketplace": "posit-dev-skills" },
+        { "name": "github", "marketplace": "posit-dev-skills" },
+        { "name": "r-lib", "marketplace": "posit-dev-skills" },
+        { "name": "open-source", "marketplace": "posit-dev-skills" },
+        { "name": "ggsql", "marketplace": "posit-dev-skills" },
+        { "name": "shiny", "marketplace": "posit-dev-skills" },
+        { "name": "quarto", "marketplace": "posit-dev-skills" }
       ]
     }
   ]

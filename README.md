@@ -1,209 +1,79 @@
-# Posit Claude Skills
+# r-science skills
 
-A collection of Claude Skills from Posit!
+Claude Skills for **science-centered R package development** — where mathematical, statistical, physical, and biological correctness comes first and the code is functional by default.
 
 Claude Skills extend Claude's capabilities with specialized knowledge and workflows. Skills are automatically activated by Claude based on your task and can be used in Claude.ai, Claude Code, or via the Claude API. Learn more at the [Claude Skills documentation](https://support.claude.com/en/articles/12512180-using-skills-in-claude).
 
-## Available Skills
+> This repository contains only the r-science skills. The general-purpose R, GitHub, and publishing skills it builds on live in the upstream **[Posit Claude Skills](https://github.com/posit-dev/skills)** repository and are pulled in as plugin **dependencies** (see [Installation](#installation)) rather than copied here.
 
-### R Science
+## The r-science workflow
 
-A workflow spine and supporting knowledge skills for **science-centered** R package development — where mathematical, statistical, physical, and biological correctness comes first and the code is functional by default. The skills chain together: **plan → tests → implement → verify → benchmark/optimise → review**.
+A workflow spine and supporting knowledge skills that chain together: **whiteboard → plan → tests → implement → verify → benchmark/optimise → review**.
 
-> **One-command setup:** the `r-science` plugin bundles **every skill in this repo** — the spine below plus all the R-lib, posit-dev, GitHub, open-source, Quarto, Shiny, and ggsql skills — so `/plugin install r-science@rjs-skills` installs the complete toolkit. Install the individual plugins below only if you want a narrower set.
+- **[conventions](./r-science/conventions/)** — Coding conventions for scientific R packages (correctness-first, functional by default, reproducible, referenced); ships a `CLAUDE.md` template for dropping into a package root
+- **[whiteboard](./r-science/whiteboard/)** — Divergent, high-altitude "is this even the right thing to do?" exploration before planning — generates alternatives (including cross-disciplinary ones) and emits a design brief
+- **[plan](./r-science/plan/)** — Correctness-first implementation planning that specifies behaviour and its correctness basis (equations, invariants, references, edge cases) precisely enough for tests to be derived from it
+- **[tests](./r-science/tests/)** — Turn an approved plan into an executable behaviour specification — describe/it tests with analytic/invariant/reference/round-trip oracles and seeded stochastic tests
+- **[implement](./r-science/implement/)** — Orchestrate implementation by delegating coding to subagents stage by stage: baseline benchmark, turn pending specs green, defer behaviour-changing optimisations to the user
+- **[verify](./r-science/verify/)** — Staged quality gate returning READY / NOT READY, gating on correctness (behaviour specs pass) and cleanliness rather than a coverage percentage
+- **[benchmark-optimise](./r-science/benchmark-optimise/)** — Profile and benchmark with `bench`/`profvis`; behaviour-preserving optimisations only, with behaviour-changing approximations deferred as modelling decisions
+- **[review](./r-science/review/)** — Final review against the plan: plan conformance and scientific soundness, delegating general code- and test-quality review to the upstream reviewer skills
+- **[r-oop](./r-science/r-oop/)** — Decide whether a problem needs OOP at all, then pick the right system (S7 preferred, then S3; vctrs for vector-like types)
+- **[r-bayes](./r-science/r-bayes/)** — Bayesian modelling with brms/Stan: DAG-based identification, justified priors, convergence as a hard gate, seeded reproducible fits
 
-- **[conventions](./r-science/conventions/)** - Coding conventions for scientific R packages (correctness-first, functional by default, reproducible, referenced); ships a `CLAUDE.md` template for dropping into a package root
-- **[whiteboard](./r-science/whiteboard/)** - Divergent, high-altitude "is this even the right thing to do?" exploration before planning — generates alternatives (including cross-disciplinary ones) and emits a design brief
-- **[plan](./r-science/plan/)** - Correctness-first implementation planning that specifies behaviour and its correctness basis (equations, invariants, references, edge cases) precisely enough for tests to be derived from it
-- **[tests](./r-science/tests/)** - Turn an approved plan into an executable behaviour specification — describe/it tests with analytic/invariant/reference/round-trip oracles and seeded stochastic tests
-- **[implement](./r-science/implement/)** - Orchestrate implementation by delegating coding to subagents stage by stage: baseline benchmark, turn pending specs green, defer behaviour-changing optimisations to the user
-- **[verify](./r-science/verify/)** - Staged quality gate returning READY / NOT READY, gating on correctness (behaviour specs pass) and cleanliness rather than a coverage percentage
-- **[benchmark-optimise](./r-science/benchmark-optimise/)** - Profile and benchmark with `bench`/`profvis`; behaviour-preserving optimisations only, with behaviour-changing approximations deferred as modelling decisions
-- **[review](./r-science/review/)** - Final review against the plan: plan conformance and scientific soundness, delegating general code- and test-quality review to the reviewer skills below
-- **[critical-code-reviewer](./posit-dev/critical-code-reviewer/)** - General adversarial code review (also in posit-dev); `review` delegates code-quality findings to it
-- **[review-testing](./posit-dev/review-testing/)** - General test-quality review (also in posit-dev); `review` delegates test-quality findings to it
-- **[r-oop](./r-science/r-oop/)** - Decide whether a problem needs OOP at all, then pick the right system (S7 preferred, then S3; vctrs for vector-like types)
-- **[r-bayes](./r-science/r-bayes/)** - Bayesian modelling with brms/Stan: DAG-based identification, justified priors, convergence as a hard gate, seeded reproducible fits
+## Upstream dependencies
 
-### Posit Developer
+The `r-science` plugin declares plugin **dependencies** on seven plugins from the Posit `posit-dev-skills` marketplace, so installing it also installs the general-purpose skills the workflow leans on:
 
-General-purpose developer skills useful across any language, project type, or context.
+| Posit plugin | What it provides |
+| ------------ | ---------------- |
+| `posit-dev`  | General developer skills — code review, test review, design docs, working-on |
+| `github`     | PR creation and review-thread workflows |
+| `r-lib`      | R package development with the r-lib ecosystem (testthat, cli, lifecycle, mirai, CRAN checks, alt-text) |
+| `open-source`| Release posts and release checklists |
+| `ggsql`      | ggsql query writing |
+| `shiny`      | Shiny app development (bslib, theming, brand.yml) |
+| `quarto`     | Quarto authoring (brand.yml, alt-text) |
 
-- **[critical-code-reviewer](./posit-dev/critical-code-reviewer/)** - Conduct rigorous, adversarial code reviews identifying security holes, lazy patterns, edge case failures, and bad practices across Python, R, JavaScript/TypeScript, SQL, and front-end code
-- **[describe-design](./posit-dev/describe-design/)** - Research a codebase and create architectural documentation describing how features or systems work, with Mermaid diagrams and stable code references suitable for humans and AI agents
-- **[review-testing](./posit-dev/review-testing/)** - Review test code for quality, design, and completeness after implementing a feature or fixing a bug, covering assertion completeness, mocking boundaries, fixture design, test smells, and coverage gaps
-
-
-### GitHub
-
-Skills for GitHub pull request workflows — creating PRs, addressing review feedback, and resolving threads.
-
-- **[pr-create](./github/pr-create/)** - Creates a pull request from current changes, monitors GitHub CI, and debugs any failures until CI passes
-- **[pr-threads-address](./github/pr-threads-address/)** - Review all unresolved PR review threads, address them by making necessary code changes, and commit the changes appropriately
-- **[pr-threads-resolve](./github/pr-threads-resolve/)** - Bulk resolve unresolved PR review threads
-
-### Open Source
-
-Skills for open-source R and Python package developers, streamlining common workflows like releases, changelogs, and contributor acknowledgments.
-
-- **[create-release-checklist](./open-source/create-release-checklist/)** - Create a release checklist and GitHub issue for an R package, with automatic version calculation and customizable checklist generation
-- **[release-post](./open-source/release-post/)** - Create professional package release blog posts following Tidyverse or Shiny blog conventions, with support for both R and Python packages
-
-### R Package Development
-
-R package development skills for working with the r-lib ecosystem and modern R package workflows.
-
-- **[testing-r-packages](./r-lib/testing-r-packages/)** - Best practices for writing R package tests using testthat 3+, including test structure, expectations, fixtures, snapshots, mocking, and BDD-style testing
-- **[cli](./r-lib/cli/)** - Comprehensive guidance for using the cli R package for command-line interface styling, semantic messaging, and user communication with inline markup, progress indicators, and theming
-- **[cran-extrachecks](./r-lib/cran-extrachecks/)** - Prepare R packages for CRAN submission by checking for common ad-hoc requirements not caught by `devtools::check()`, including documentation standards, DESCRIPTION field formatting, and URL validation
-- **[lifecycle](./r-lib/lifecycle/)** - Manage R package lifecycle according to tidyverse principles using the lifecycle package, covering deprecation workflows, function/argument renaming, superseding, and experimental stages
-- **[r-package-development](./r-lib/r-package-development/)** - R package development with devtools, testthat, and roxygen2, covering key commands, coding conventions, testing, documentation, and NEWS.md practices
-- **[mirai](./r-lib/mirai/)** - Async, parallel, and distributed computing in R using mirai, covering explicit dependency passing, daemon setup, parallel mapping with `mirai_map()`, Shiny integration, remote/HPC launchers, and migration from future/parallel
-- **[alt-text](./alt-text/)** - Generate and improve accessible alt text for data visualizations and images in pkgdown sites and Quarto documents, covering vignette code chunks (`fig.alt`), static markdown images, and multi-plot chunks
-
-### ggsql
-
-Skills for writing ggsql queries — a grammar of graphics for SQL.
-
-- **[ggsql](./ggsql/ggsql/)** - Write ggsql queries — a grammar of graphics for SQL. Use when the user wants to create, modify, or understand a ggsql visualization query
-
-### Shiny
-
-Skills for Shiny app development in both R and Python.
-
-- **[brand-yml](./brand-yml/)** - Create and apply brand.yml files for consistent styling across Shiny apps, with support for bslib (R) and ui.Theme (Python), including automatic brand discovery and theming functions for plots and tables
-- **[shiny-bslib](./shiny/shiny-bslib/)** - Build modern Shiny dashboards using bslib with Bootstrap 5 layouts, cards, value boxes, navigation, theming, and modern inputs. Includes migration guide from legacy Shiny patterns
-- **[shiny-bslib-theming](./shiny/shiny-bslib-theming/)** - Comprehensive theming for Shiny apps using bslib, covering bs_theme(), Bootswatch themes, custom colors, typography, Bootstrap Sass variables, custom Sass/CSS rules, dark mode, dynamic theming, and R plot theming
-
-### Quarto
-
-Skills for Quarto document creation and publishing.
-
-- **[brand-yml](./brand-yml/)** - Create and apply brand.yml files for consistent styling across Quarto projects, supporting HTML documents, dashboards, RevealJS presentations, Typst PDFs, and websites with automatic brand discovery and theme layering
-- **[authoring](quarto/README.md#quarto-authoring-skill)** - Comprehensive guidance for Quarto document authoring and R Markdown migration. Write new Quarto documents with best practices, convert R Markdown files, migrate bookdown/blogdown/xaringan/distill projects, and use Quarto-specific features like hashpipe syntax, cross-references, callouts, and extensions
-- **[alt-text](./alt-text/)** - Generate and improve accessible alt text for figures in Quarto documents using Amy Cesal's three-part formula (chart type, data description, key insight). Supports code-generated plots and static images
+These are referenced, not vendored — you always get the upstream version, and this repository is no longer a fork of it.
 
 ## Installation
 
-### Using `npx skills add` (Any Agent)
-
-Install skills from this repository into any supported coding agent (Claude Code, Codex, Cursor, Cline, and [many more](https://github.com/vercel-labs/skills)) using the `npx skills add` CLI:
-
-```bash
-# List available skills without installing
-npx skills add vorpalvorpal/skills --list
-
-# Install skills via an interactive menu
-npx skills add vorpalvorpal/skills --all
-
-# Install specific skills by category name
-npx skills add vorpalvorpal/skills --skill cli --skill lifecycle
-
-# Install to Claude Code only, globally
-npx skills add vorpalvorpal/skills --agent claude-code --global
-```
-
 ### Claude Code
 
-#### Method 1: Add Marketplace
-
-Add this repository as a plugin marketplace in Claude Code:
+Because the dependencies live in a separate marketplace, **add the upstream Posit marketplace first**, then this one. Claude Code resolves the dependencies automatically once both are configured; without the Posit marketplace the `r-science` plugin stays disabled.
 
 ```
+/plugin marketplace add posit-dev/skills
 /plugin marketplace add vorpalvorpal/skills
-```
-
-Then browse and install the skill categories you need through the Claude Code UI.
-
-#### Method 2: Direct Installation
-
-Install specific skill categories directly:
-
-```
 /plugin install r-science@rjs-skills
-/plugin install posit-dev@rjs-skills
-/plugin install github@rjs-skills
-/plugin install open-source@rjs-skills
-/plugin install ggsql@rjs-skills
-/plugin install r-lib@rjs-skills
-/plugin install shiny@rjs-skills
-/plugin install quarto@rjs-skills
 ```
 
-Each command installs all skills in that category.
+Installing `r-science` pulls in the seven upstream plugins above. To install any of them on their own instead, use `/plugin install <name>@posit-dev-skills`.
 
-#### Method 3: Manual Installation
+### Manual installation
 
-For customization or offline use:
+For customization or offline use, clone the repo and copy individual skills into your Claude Code skills directory:
 
-1. Clone this repository:
-
-   ```bash
-   git clone https://github.com/vorpalvorpal/skills.git
-   cd skills
-   ```
-
-2. Copy individual skills to your Claude Code skills directory:
-
-   ```bash
-   cp -r open-source/release-post ~/.config/claude-code/skills/
-   ```
-
-3. Or install all skills from a category:
-   ```bash
-   for skill in open-source/*/; do
-     cp -r "$skill" ~/.config/claude-code/skills/
-   done
-   ```
-
-### Claude.ai
-
-Skills can be uploaded to Claude.ai following the [Creating Custom Skills guide](https://support.claude.com/en/articles/12512198-creating-custom-skills).
-
-### Claude API
-
-Use the [Skills API](https://docs.claude.com/en/api/skills-guide) to programmatically load and manage skills in your applications.
-
-## Using Skills
-
-Once installed, Claude will automatically activate relevant skills based on your task. You don't need to explicitly invoke them.
-
-For example, with the `release-post` skill installed:
-
-```
-You: Help me write a release post for dplyr 1.2.0
-
-Claude: I'll help you create a release post. First, let me gather some information...
+```bash
+git clone https://github.com/vorpalvorpal/skills.git
+cd skills
+cp -r r-science/plan ~/.config/claude-code/skills/
 ```
 
-Claude will use the skill's knowledge to guide you through creating a properly formatted release post.
+Note that manual copies do not pull in the upstream dependencies — install those separately if you need them.
 
-## Skill Categories
+### Claude.ai / Claude API
 
-This repository organizes skills into categories to make it easier to find and install skills relevant to your work:
+Skills can be uploaded to Claude.ai following the [Creating Custom Skills guide](https://support.claude.com/en/articles/12512198-creating-custom-skills), or loaded programmatically with the [Skills API](https://docs.claude.com/en/api/skills-guide).
 
-| Category        | Description                                                 |
-| --------------- | ----------------------------------------------------------- |
-| **r-science**   | Science-centered R package workflow (plan, tests, implement, verify, benchmark, review) + R OOP and Bayesian skills |
-| **posit-dev**   | General-purpose developer skills (code review, architecture docs) |
-| **ggsql**     | ggsql query writing — a grammar of graphics for SQL                 |
-| **github**    | GitHub PR workflows (create PRs, address review threads, resolve threads) |
-| **open-source** | Open-source R/Python package workflows (releases, changelogs)     |
-| **r-lib**       | R package development with the r-lib ecosystem              |
-| **shiny**       | Shiny app development and deployment (R and Python)         |
-| **quarto**      | Quarto document creation and publishing                     |
+## Using skills
 
-<!-- Future category ideas
-
-| **tidyverse** | Tidyverse-specific package development |
-| **connect** | Posit Connect deployment and management |
--->
+Once installed, Claude automatically activates relevant skills based on your task — you don't need to invoke them explicitly. For the r-science spine you can also drive each stage by name (e.g. `/plan`, `/tests`, `/implement`).
 
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on creating new skills.
-
-**We highly recommend using Anthropic's [skill-creator](https://github.com/anthropics/skills) skill** to help you build high-quality skills. Skills should be grouped together by category, but the category groups are flexible. Feel free to propose new categories as needed.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on creating new skills.
 
 ## License
 
@@ -214,13 +84,5 @@ This repository is licensed under the MIT License. See [LICENSE](./LICENSE) for 
 - [Claude Skills Overview](https://www.anthropic.com/news/skills)
 - [Using Skills in Claude](https://support.claude.com/en/articles/12512180-using-skills-in-claude)
 - [Creating Custom Skills](https://support.claude.com/en/articles/12512198-creating-custom-skills)
-- [Skills API Documentation](https://docs.claude.com/en/api/skills-guide)
-- [Anthropic's Official Skills Repository](https://github.com/anthropics/skills)
-
-## Support
-
-If you have questions or encounter issues, check the [Claude Skills documentation](https://support.claude.com/en/articles/12512180-using-skills-in-claude) or [open an issue](https://github.com/vorpalvorpal/skills/issues/new) on GitHub.
-
----
-
-**Built with ❤️ + ☕ + 🤖 at Posit**
+- [Plugin dependencies reference](https://code.claude.com/docs/en/plugin-dependencies)
+- [Upstream Posit Claude Skills](https://github.com/posit-dev/skills)
