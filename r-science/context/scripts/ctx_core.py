@@ -31,7 +31,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 # ---------------------------------------------------------------------------
@@ -290,13 +290,25 @@ class Finding:
 
 
 @dataclass
+class Comment:
+    """One comment in a node's append-only stream (seq 0 is the body/stub)."""
+    seq: int
+    text: str
+
+
+@dataclass
 class Node:
-    """A single GitHub issue as received from the fetch adapter."""
+    """A single GitHub issue as received from the fetch adapter.
+
+    `comments` is the append-only stream after the body; collate folds
+    [body @ seq 0] + comments latest-wins. Defaults empty for body-only nodes.
+    """
     number: int
     body: str
     state: str            # "open" | "closed"
     state_reason: str | None  # "completed" | "not_planned" | None
     labels: set           # set[str]
+    comments: list = field(default_factory=list)  # list[Comment]
 
 
 @dataclass
@@ -342,6 +354,13 @@ class Model:
         self.registry: _Registry = _Registry()
         self.dead_ends: dict = defaultdict(list)
         self.nodes: dict = {}  # int → Node
+        # rev-6 fold outputs
+        self.gauges: dict = defaultdict(dict)      # issue → {"confidence":.., "fidelity":..}
+        self.seal_own: dict = {}                   # issue → "sealed"|"unsealed" (explicit only)
+        self.seal: dict = {}                       # issue → effective seal (incl. inheritance)
+        self.registries: dict = defaultdict(list)  # keyed kind → list[(issue, Keyed)]
+        self.dormant: set = set()                  # issues closed + labelled "dormant"
+        self.confidence_inputs: dict = {}          # issue → (resolved, total) from q/v
 
 
 class _Registry:
@@ -613,40 +632,76 @@ def render(marker: Marker) -> str:
 # collate()
 # ---------------------------------------------------------------------------
 
-def collate(nodes: list) -> Model:
-    """Build a Model from a list of Nodes.
+_GAUGE_KEY = {CONFIDENCE: "confidence", FIDELITY: "fidelity"}
 
-    For each node, parse its body and populate the model's indices.
+
+def collate(nodes: list) -> Model:
+    """Build a Model by folding each node's stream ([body @ seq 0] + comments).
+
+    Keyed markers fold latest-wins per id (→ registries, dead_ends); gauges and
+    seal fold latest-wins per node; relations/registry kinds union across the
+    stream. Also derives effective seal (with ancestor inheritance), the dormant
+    set, and confidence inputs. Body-only nodes behave exactly as before.
     """
     model = Model()
 
     for node in nodes:
         model.nodes[node.number] = node
-        parsed = parse(node.body)
 
-        for marker in parsed.markers:
-            if marker.kind == PART_OF:
-                for parent in marker.value:
+        # The node's marker stream in seq order — the body is seq 0.
+        stream = [(0, mk) for mk in parse(node.body).markers]
+        for c in sorted(node.comments, key=lambda c: c.seq):
+            stream.extend((c.seq, mk) for mk in parse(c.text).markers)
+
+        keyed_latest: dict = {}   # id → (seq, kind, Keyed)
+        gauge_seq: dict = {}      # kind → seq (latest tracking for gauges/seal)
+
+        for seq, mk in stream:
+            if mk.kind in KEYED:
+                kid = mk.value.id
+                if kid not in keyed_latest or seq >= keyed_latest[kid][0]:
+                    keyed_latest[kid] = (seq, mk.kind, mk.value)
+            elif mk.kind in (CONFIDENCE, FIDELITY):
+                if mk.kind not in gauge_seq or seq >= gauge_seq[mk.kind]:
+                    gauge_seq[mk.kind] = seq
+                    model.gauges[node.number][_GAUGE_KEY[mk.kind]] = mk.value
+            elif mk.kind == SEAL:
+                if SEAL not in gauge_seq or seq >= gauge_seq[SEAL]:
+                    gauge_seq[SEAL] = seq
+                    model.seal_own[node.number] = mk.value.split()[0]
+            elif mk.kind == PART_OF:
+                for parent in mk.value:
                     model.tree_edges.add((parent, node.number))
-
-            elif marker.kind == ASPECT:
-                model.aspects[node.number].append(marker.value)
-
-            elif marker.kind == BOUNDARY:
-                model.boundaries[node.number] = marker.value
-
-            elif marker.kind == DESIGN:
-                model.design_links[node.number] = marker.value
-
-            elif marker.kind == EQ:
-                model.registry.add(marker.value, node.number)
-
-            elif marker.kind == CITES:
-                for key in marker.value:
+            elif mk.kind == ASPECT:
+                if mk.value not in model.aspects[node.number]:
+                    model.aspects[node.number].append(mk.value)
+            elif mk.kind == BOUNDARY:
+                model.boundaries[node.number] = mk.value
+            elif mk.kind == DESIGN:
+                model.design_links[node.number] = mk.value
+            elif mk.kind == EQ:
+                model.registry.add(mk.value, node.number)
+            elif mk.kind == CITES:
+                for key in mk.value:
                     model.registry.add(key, node.number)
 
-            elif marker.kind == DEAD_END:
-                model.dead_ends[node.number].append(marker.value)
+        # Apply folded keyed markers → registries, dead_ends, confidence inputs.
+        q_done = q_total = 0
+        for _, kind, kv in keyed_latest.values():
+            model.registries[kind].append((node.number, kv))
+            if kind == DEAD_END:
+                model.dead_ends[node.number].append(kv)
+            elif kind == QUESTION:
+                q_total += 1
+                q_done += (kv.status == "answered")
+            elif kind == VALIDATION:
+                q_total += 1
+                q_done += (kv.status == "met")
+        if q_total:
+            model.confidence_inputs[node.number] = (q_done, q_total)
+
+        if node.state == "closed" and "dormant" in node.labels:
+            model.dormant.add(node.number)
 
     # Build topological order (roots first).
     children_of: dict = defaultdict(set)
@@ -677,6 +732,19 @@ def collate(nodes: list) -> Model:
             order.append(n)
 
     model.build_order = order
+
+    # Effective seal: own explicit seal, else nearest ancestor's, else "sealed".
+    for n in all_numbers:
+        cur, seen, state = n, set(), "sealed"
+        while cur is not None and cur not in seen:
+            seen.add(cur)
+            if cur in model.seal_own:
+                state = model.seal_own[cur]
+                break
+            ps = parents_of.get(cur)
+            cur = min(ps) if ps else None
+        model.seal[n] = state
+
     return model
 
 
