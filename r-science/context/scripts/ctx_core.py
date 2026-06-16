@@ -6,7 +6,8 @@ a pure function of its arguments; same input → same output.
 Public API
 ----------
 Kind constants (str):
-    PART_OF, ASPECT, BOUNDARY, BLOCKED_BY, DESIGN, EQ, CITES, DEAD_END
+    PART_OF, ASPECT, BOUNDARY, BLOCKED_BY, DESIGN, EQ, CITES, DEAD_END,
+    CONFIDENCE, FIDELITY, SEAL
 
 Dataclasses:
     Marker(kind, value, line)
@@ -44,6 +45,9 @@ DESIGN = "design"
 EQ = "eq"
 CITES = "cites"
 DEAD_END = "dead_end"
+CONFIDENCE = "confidence"
+FIDELITY = "fidelity"
+SEAL = "seal"
 
 # ---------------------------------------------------------------------------
 # Glyph vocabulary
@@ -69,6 +73,9 @@ _G_DESIGN    = _norm("📐")
 _G_EQ        = _norm("🟰")
 _G_CITES     = _norm("📚")
 _G_DEAD_END  = _norm("🪦")
+_G_CONFIDENCE = _norm("🧭")
+_G_FIDELITY   = _norm("📊")
+_G_SEAL       = _norm("🔒")
 
 
 def _parse_issue_list(raw: str, line: int) -> tuple[list[int] | None, Finding | None]:
@@ -103,6 +110,35 @@ def _parse_cite_list(raw: str, line: int) -> tuple[list[str] | None, Finding | N
     return parts, None
 
 
+_CONFIDENCE_SET = {"low", "tentative", "high"}
+_FIDELITY_SET = {"stub", "interface", "mock", "correct"}
+_SEAL_SET = {"sealed", "unsealed"}
+
+
+def _parse_enum(allowed: set, label: str) -> Callable:
+    """Build a value parser that accepts only members of `allowed`."""
+    def parser(raw: str, line: int):
+        v = raw.strip()
+        if v not in allowed:
+            return None, Finding(0, "parse",
+                                 f"{label} must be one of {sorted(allowed)}, got {v!r}",
+                                 line=line)
+        return v, None
+    return parser
+
+
+def _parse_seal(raw: str, line: int):
+    """Parse `sealed|unsealed [who] [when]`; validate the leading state token."""
+    v = raw.strip()
+    if not v:
+        return None, Finding(0, "parse", "expected a seal state", line=line)
+    state = v.split()[0]
+    if state not in _SEAL_SET:
+        return None, Finding(0, "parse",
+                             f"seal state must be sealed|unsealed, got {state!r}", line=line)
+    return v, None
+
+
 # Table: (normalised_glyph, keyword_regex, kind, parser, is_block_only)
 # keyword_regex is case-insensitive and matched after the glyph.
 _VOCAB: list[tuple[str, str, str, Callable, bool]] = [
@@ -114,6 +150,9 @@ _VOCAB: list[tuple[str, str, str, Callable, bool]] = [
     (_G_EQ,       r"Eq",        EQ,        _parse_str,         False),
     (_G_CITES,    r"Cites",     CITES,     _parse_cite_list,   False),
     (_G_DEAD_END, r"Dead-end",  DEAD_END,  _parse_str,         True),  # block only
+    (_G_CONFIDENCE, r"Confidence", CONFIDENCE, _parse_enum(_CONFIDENCE_SET, "Confidence"), False),
+    (_G_FIDELITY,   r"Fidelity",   FIDELITY,   _parse_enum(_FIDELITY_SET, "Fidelity"),     False),
+    (_G_SEAL,       r"Seal",       SEAL,       _parse_seal,                                False),
 ]
 
 # Bare keyword patterns for I8 (sigil-less line detection)
@@ -388,6 +427,9 @@ _KIND_TO_KW: dict[str, str] = {
     EQ:        "Eq",
     CITES:     "Cites",
     DEAD_END:  "Dead-end",
+    CONFIDENCE:"Confidence",
+    FIDELITY:  "Fidelity",
+    SEAL:      "Seal",
 }
 
 # Glyph for rendering (normalised, no trailing FE0F).
@@ -400,6 +442,9 @@ _KIND_TO_GLYPH: dict[str, str] = {
     EQ:        _G_EQ,
     CITES:     _G_CITES,
     DEAD_END:  _G_DEAD_END,
+    CONFIDENCE:_G_CONFIDENCE,
+    FIDELITY:  _G_FIDELITY,
+    SEAL:      _G_SEAL,
 }
 
 
