@@ -64,6 +64,11 @@ lerna-debug.log*
 *.tmp
 *.temp
 .cache/
+.pytest_cache/
+
+# Context-layer local stores (disposable; issues are canonical)
+tmp/            # artefact cache (tmp/art) + scratch
+.ctx-transcripts/   # local presentation-text transcripts (spirit-check only)
 
 # R
 .Rproj.user
