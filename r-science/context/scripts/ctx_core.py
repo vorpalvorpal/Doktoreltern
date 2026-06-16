@@ -7,7 +7,7 @@ Public API
 ----------
 Kind constants (str):
     PART_OF, ASPECT, BOUNDARY, BLOCKED_BY, DESIGN, EQ, CITES, DEAD_END,
-    CONFIDENCE, FIDELITY, SEAL
+    CONFIDENCE, FIDELITY, SEAL, QUESTION, VALIDATION, ALTERNATIVE, FUTURE, OPT
 
 Dataclasses:
     Marker(kind, value, line)
@@ -48,6 +48,11 @@ DEAD_END = "dead_end"
 CONFIDENCE = "confidence"
 FIDELITY = "fidelity"
 SEAL = "seal"
+QUESTION = "question"
+VALIDATION = "validation"
+ALTERNATIVE = "alternative"
+FUTURE = "future"
+OPT = "opt"
 
 # ---------------------------------------------------------------------------
 # Glyph vocabulary
@@ -76,6 +81,11 @@ _G_DEAD_END  = _norm("🪦")
 _G_CONFIDENCE = _norm("🧭")
 _G_FIDELITY   = _norm("📊")
 _G_SEAL       = _norm("🔒")
+_G_QUESTION    = _norm("❓")
+_G_VALIDATION  = _norm("✅")
+_G_ALTERNATIVE = _norm("⚖️")
+_G_FUTURE      = _norm("🔮")
+_G_OPT         = _norm("⚡")
 
 
 def _parse_issue_list(raw: str, line: int) -> tuple[list[int] | None, Finding | None]:
@@ -139,6 +149,45 @@ def _parse_seal(raw: str, line: int):
     return v, None
 
 
+# keyed kinds: kind -> (prefix, default_status, status_set). The id namespace is
+# #<issue>.<prefix><n>; a later comment bearing the same id supersedes it (fold).
+KEYED: dict = {
+    QUESTION:    ("q",   "open",     frozenset({"open", "answered"})),
+    VALIDATION:  ("v",   "open",     frozenset({"open", "met", "unmet"})),
+    ALTERNATIVE: ("alt", "proposed", frozenset({"proposed", "rejected", "viable", "chosen"})),
+    FUTURE:      ("fd",  "declared", frozenset({"declared", "activated", "dropped"})),
+    OPT:         ("opt", "declared", frozenset({"declared", "done", "dropped"})),
+}
+
+_WS_SPLIT = re.compile(r"^(\S+)\s*(.*)$", re.DOTALL)
+
+
+def _make_keyed_parser(prefix: str, default_status: str, status_set: frozenset) -> Callable:
+    """Build a parser for `<id> [<status>] [<text>]`, id = #<issue>.<prefix><n>.
+
+    The id's prefix must match this kind. An unrecognised second token is text,
+    not status (the default status then applies). Returns a Keyed value.
+    """
+    id_re = re.compile(rf"^#\d+\.{prefix}\d+$")
+
+    def parser(raw: str, line: int):
+        v = raw.strip()
+        if not v:
+            return None, Finding(0, "parse", f"keyed marker needs an id like #16.{prefix}1", line=line)
+        mid = _WS_SPLIT.match(v)
+        idtok, rest = mid.group(1), mid.group(2)
+        if not id_re.match(idtok):
+            return None, Finding(0, "parse",
+                                 f"bad keyed id {idtok!r}; expected #<issue>.{prefix}<n>", line=line)
+        status, text = default_status, rest
+        mst = _WS_SPLIT.match(rest)
+        if mst and mst.group(1) in status_set:
+            status, text = mst.group(1), mst.group(2)
+        return Keyed(idtok, status, text.strip()), None
+
+    return parser
+
+
 # Table: (normalised_glyph, keyword_regex, kind, parser, is_block_only)
 # keyword_regex is case-insensitive and matched after the glyph.
 _VOCAB: list[tuple[str, str, str, Callable, bool]] = [
@@ -153,6 +202,11 @@ _VOCAB: list[tuple[str, str, str, Callable, bool]] = [
     (_G_CONFIDENCE, r"Confidence", CONFIDENCE, _parse_enum(_CONFIDENCE_SET, "Confidence"), False),
     (_G_FIDELITY,   r"Fidelity",   FIDELITY,   _parse_enum(_FIDELITY_SET, "Fidelity"),     False),
     (_G_SEAL,       r"Seal",       SEAL,       _parse_seal,                                False),
+    (_G_QUESTION,    r"Question",    QUESTION,    _make_keyed_parser(*KEYED[QUESTION]),    False),
+    (_G_VALIDATION,  r"Validation",  VALIDATION,  _make_keyed_parser(*KEYED[VALIDATION]),  False),
+    (_G_ALTERNATIVE, r"Alternative", ALTERNATIVE, _make_keyed_parser(*KEYED[ALTERNATIVE]), False),
+    (_G_FUTURE,      r"Future",      FUTURE,      _make_keyed_parser(*KEYED[FUTURE]),      False),
+    (_G_OPT,         r"Optimisation",OPT,         _make_keyed_parser(*KEYED[OPT]),         False),
 ]
 
 # Bare keyword patterns for I8 (sigil-less line detection)
@@ -161,6 +215,17 @@ _KEYWORD_PATTERNS = [(kw, kind) for _, kw, kind, _, _ in _VOCAB]
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Keyed:
+    """Value of a keyed marker: stable id, evolving status, free text.
+
+    e.g. Keyed("#16.q4", "answered", "Yes — foo holds when bar").
+    """
+    id: str
+    status: str
+    text: str
+
 
 @dataclass
 class Marker:
@@ -430,6 +495,11 @@ _KIND_TO_KW: dict[str, str] = {
     CONFIDENCE:"Confidence",
     FIDELITY:  "Fidelity",
     SEAL:      "Seal",
+    QUESTION:    "Question",
+    VALIDATION:  "Validation",
+    ALTERNATIVE: "Alternative",
+    FUTURE:      "Future",
+    OPT:         "Optimisation",
 }
 
 # Glyph for rendering (normalised, no trailing FE0F).
@@ -445,11 +515,22 @@ _KIND_TO_GLYPH: dict[str, str] = {
     CONFIDENCE:_G_CONFIDENCE,
     FIDELITY:  _G_FIDELITY,
     SEAL:      _G_SEAL,
+    QUESTION:    _G_QUESTION,
+    VALIDATION:  _G_VALIDATION,
+    ALTERNATIVE: _G_ALTERNATIVE,
+    FUTURE:      _G_FUTURE,
+    OPT:         _G_OPT,
 }
 
 
 def _render_value(kind: str, value: object) -> str:
     """Render a marker value to its string representation."""
+    if kind in KEYED:
+        assert isinstance(value, Keyed)
+        parts = [value.id, value.status]   # status always emitted ⇒ unambiguous round-trip
+        if value.text:
+            parts.append(value.text)
+        return " ".join(parts)
     if kind in (PART_OF, BOUNDARY, BLOCKED_BY):
         # list[int] → "#16, #17"
         assert isinstance(value, list)
