@@ -5,10 +5,10 @@ ancestor *bodies only* and never volunteers comments, siblings, or children —
 detail is opt-in, and registry/dead-end queries return scoped entries, never
 the whole index (the token rule).
 
-The server's planned directory (``mcp/``) shadows the ``mcp`` SDK package, so we
-load it by path here rather than ``import mcp.server`` (see #24 risk note;
-implement should rename the directory). Tools are tested against an injected
-``FakeSource`` so no network is touched.
+The server lives in ``ctx_mcp/`` (renamed from ``mcp/`` so it never shadows the
+``mcp`` SDK package — see #41.q1). We still load it by path here so the suite has
+no import-name dependency. Tools are tested against an injected ``FakeSource`` so
+no network is touched.
 
 Assumed tool surface (each takes a source provider + the target):
 
@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-SERVER_PATH = Path(__file__).resolve().parent.parent.parent / "mcp" / "server.py"
+SERVER_PATH = Path(__file__).resolve().parent.parent.parent / "ctx_mcp" / "server.py"
 if not SERVER_PATH.exists():
     pytest.skip("server.py not present yet — Stage 5 (context MCP)",
                 allow_module_level=True)
