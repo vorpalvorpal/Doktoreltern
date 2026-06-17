@@ -1,8 +1,8 @@
 Tumtum
 
-> He took his vorpal sword in hand:
-> Long time the manxome foe he sought —
-> So rested he by the **Tumtum** tree,
+> He took his vorpal sword in hand:  
+> Long time the manxome foe he sought —  
+> So rested he by the **Tumtum** tree,  
 > And stood awhile in thought.
 
 Find out you're wrong early, then build the right thing. Tumtum is a risk-first methodology for solo or small-scale technical projects.
