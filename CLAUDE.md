@@ -90,6 +90,23 @@ When designing or extending the r-science workflow (skills, agents, MCP tooling,
   - Farm easy, well-specified tasks out to cheap models; reserve capable models for judgement.
   - Don't pollute context windows: serve summaries by default (e.g. a closed issue's closing summary, not its full thread) and fetch full detail only on explicit request.
 
+## Dogfooding
+
+When working **on this repository** and one of its skills is invoked (via
+slash command or by name), follow the version in the **working tree on the
+current branch** — read its `SKILL.md` directly — not any installed copy.
+Installed skills may be stale; the branch is the truth.
+
+## Workflow Design Principles
+
+When designing or extending the r-science workflow (skills, agents, MCP tooling, issue conventions):
+
+- **Portability is an aim, not an enforcement.** The workflow currently leans on GitHub (issues, sub-issues, labels, dependencies). Prefer designs that would move to another provider (GitLab, Gitea/Forgejo, local trackers) with minimal difficulty: keep semantics in plain text with simple greppable syntax inside issue bodies/comments; treat platform primitives (sub-issue links, labels, dependency edges) as derived indices over that text, not as the source of truth.
+- **Minimise token usage**:
+  - Automate boring, deterministic work with simple scripts (extraction, collation, consistency linting) rather than spending LLM calls on it.
+  - Farm easy, well-specified tasks out to cheap models; reserve capable models for judgement.
+  - Don't pollute context windows: serve summaries by default (e.g. a closed issue's closing summary, not its full thread) and fetch full detail only on explicit request.
+
 ## Key Conventions
 
 - **Progressive disclosure**: Put specialized or large reference content in `references/*.md` and instruct Claude to read those files only when needed. This keeps the main `SKILL.md` within token limits.

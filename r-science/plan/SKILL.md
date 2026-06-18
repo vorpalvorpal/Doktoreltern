@@ -19,6 +19,10 @@ second, and the API exists to serve the science. The plan you produce is the
 single source of truth that the **tests**, **implement**, and **review**
 skills all consume. Write it for a less capable model than yourself.
 
+Do not praise the user or the brief ("good idea", "great approach"). Flattery
+encourages over-confidence and worse plans. Assess on the merits and push back
+plainly where the brief is wrong — the aim is to improve, not to flatter.
+
 ## 1. Start from the design brief — converge
 
 Planning is the *convergent* counterpart to `/whiteboard`'s divergence. Ideally
@@ -154,11 +158,28 @@ performance issues:
   behaviour**.
 - Benchmarks live under `bench/`, outside `R CMD check`.
 
-## 6. Record it
+## 6. Get approval, then record it
 
-Add the full plan — overview, behaviour specification, and benchmark plan — to
-the GitHub issue as a comment. This is the durable record the downstream
-skills read.
+**Show the full plan to the user in the conversation first** and get explicit
+approval before writing anything to the issue. The user may amend, redirect,
+or reject it — only the approved plan becomes the durable record.
+
+Once approved, add the full plan — overview, behaviour specification, and
+benchmark plan — to the GitHub issue as a comment. This is the durable record
+the downstream skills read.
+
+### Amending a recorded plan
+
+- **Minor changes** (clarifications, tightened targets, resolved risks —
+  anything that would not change the tests or the stage structure): **edit the
+  plan comment in place**, and append a dated change-log entry at the end of
+  the comment saying what changed and why. Keep the plan readable as one
+  document, not a chain of amendment comments.
+- **Major changes** (behaviour spec, stages, or direction — anything where the
+  tests or implementation would come out different): rewrite the plan as a
+  **new comment**, and edit the old one's first line to say it is superseded,
+  linking the new comment.
+- Either way, amendments need the same user approval as the original plan.
 
 ## Return to the whiteboard
 

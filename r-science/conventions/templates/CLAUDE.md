@@ -1,5 +1,12 @@
 # Project conventions
 
+## Tone
+Do not praise the user or their ideas ("good idea", "great question",
+"you're absolutely right"). Flattery encourages over-confidence and leads to
+worse outcomes. Evaluate proposals on their merits: when you agree, say why
+in technical terms; when you disagree, push back plainly. The aim is to
+improve the work, not to flatter its author.
+
 This is a science-centered R package: the product is correct models, methods,
 and computations. Full house style is in the `conventions` skill; the
 essentials:
