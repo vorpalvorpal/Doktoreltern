@@ -139,7 +139,62 @@ body {
   font-weight: 700;
   border-radius: 999px;
 }
-.thread-anchor { color: var(--muted); font-style: italic; }
-.thread-body { color: var(--fg); }
+.thread-anchor { color: var(--muted); font-style: italic; flex: 1; }
+.thread-body { color: var(--fg); margin-bottom: 0.4rem; }
 .thread-orphan { color: var(--del-fg); }
 .muted { color: var(--muted); }
+
+/* --- buttons --- */
+.btn {
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--fg);
+  cursor: pointer;
+}
+.btn:hover { background: #f3f4f6; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.btn-resolve { margin-left: auto; }
+.btn-accept { border-color: var(--ins-fg); color: var(--ins-fg); }
+.btn-reject { border-color: var(--del-fg); color: var(--del-fg); }
+
+/* --- reply box --- */
+.reply-form { display: flex; gap: 0.35rem; }
+.reply-input {
+  flex: 1;
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+
+/* --- changes panel --- */
+.changes { list-style: none; margin: 0 0 1.25rem; padding: 0; }
+.change {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.8rem;
+}
+.change-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.change-insert .change-label { color: var(--ins-fg); }
+.change-delete .change-label { color: var(--del-fg); text-decoration: line-through; }

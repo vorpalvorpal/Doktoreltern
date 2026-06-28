@@ -37,13 +37,24 @@ export function extractThreads(markdown: string): Thread[] {
   // Walk the marks in document order (matchAll yields left-to-right) so the
   // returned list is ordered by where the anchors appear in the body.
   const threads: Thread[] = [];
+  const seen = new Set<string>();
   for (const m of markdown.matchAll(MARK_RE)) {
     const id = m[1];
+    seen.add(id);
     threads.push({
       id,
       anchor: m[2],
       body: bodies.has(id) ? bodies.get(id)! : null,
     });
   }
+
+  // Then append any thread that has an `<article>` body but no `<mark>` anchor.
+  // This surfaces a thread that exists only as a foot-region body — e.g. just
+  // after `addThread` runs but before/without an anchor, which the M2 write flow
+  // can momentarily produce. Such a thread has no in-body span, so `anchor: ''`.
+  for (const [id, body] of bodies) {
+    if (!seen.has(id)) threads.push({ id, anchor: '', body });
+  }
+
   return threads;
 }

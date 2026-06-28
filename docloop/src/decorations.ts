@@ -132,13 +132,16 @@ export function diffDecorationList(oldDoc: PMNode, newDoc: PMNode): Decoration[]
 }
 
 /**
- * Highlight every `<mark data-thread="id">…</mark>` span in the doc and tag it
- * with the thread id + a 1-based badge number, so the sidebar can cross-link.
+ * Highlight every comment-anchor span in the doc and tag it with the thread id +
+ * a 1-based badge number, so the sidebar can cross-link.
  *
- * Marks are stored as raw inline HTML: an `html` node holding the literal
- * `<mark data-thread="id">` open tag, then the anchor as a normal text node,
- * then an `html` node holding `</mark>`. We pair opens with the next close and
- * decorate the text positions between them.
+ * As of M2 (the "road bump" — see src/comment-mark.ts) the anchor is a proper
+ * ProseMirror **schema mark** (`commentAnchor`, carrying a `threadId` attr), not
+ * the M1 raw-html-node pairs. We therefore locate the highlight by scanning text
+ * nodes that carry the mark and coalescing contiguous runs of the *same*
+ * threadId into one span. (Two anchors with different ids that happen to touch
+ * stay separate; a single anchor stays one run because ProseMirror keeps equal
+ * adjacent marks on one text node.)
  */
 export interface MarkHighlight {
   id: string;
@@ -147,32 +150,49 @@ export interface MarkHighlight {
   to: number;
 }
 
+/** The schema mark name; mirrors COMMENT_ANCHOR in src/comment-mark.ts. */
+const COMMENT_ANCHOR = 'commentAnchor';
+
 export function findMarkHighlights(doc: PMNode): MarkHighlight[] {
-  const open = /^<mark\s+data-thread="([^"]+)">$/;
   const highlights: MarkHighlight[] = [];
-  // Stack of unclosed opens (marks don't nest in practice, but a stack is robust).
-  const stack: { id: string; from: number }[] = [];
+  // The open run we're currently extending, if any.
+  let run: { id: string; from: number; to: number } | null = null;
+
+  const flush = () => {
+    if (run) {
+      highlights.push({
+        id: run.id,
+        index: highlights.length + 1,
+        from: run.from,
+        to: run.to,
+      });
+      run = null;
+    }
+  };
 
   doc.descendants((node, pos) => {
-    if (node.type.name !== 'html') return true;
-    const value: string = node.attrs.value ?? '';
-    const m = open.exec(value.trim());
-    if (m) {
-      // The anchor text starts just after this open-tag node.
-      stack.push({ id: m[1], from: pos + node.nodeSize });
-    } else if (/^<\/mark>$/.test(value.trim())) {
-      const start = stack.pop();
-      if (start) {
-        highlights.push({
-          id: start.id,
-          index: highlights.length + 1,
-          from: start.from,
-          to: pos, // up to (not including) the close-tag node
-        });
-      }
+    if (!node.isText) {
+      // A non-text node breaks any open run (anchors don't span block bounds).
+      flush();
+      return true;
+    }
+    const anchorMark = node.marks.find((m) => m.type.name === COMMENT_ANCHOR);
+    const id = (anchorMark?.attrs.threadId as string | undefined) ?? null;
+    if (id == null) {
+      flush();
+      return true;
+    }
+    const from = pos;
+    const to = pos + node.nodeSize;
+    if (run && run.id === id && run.to === from) {
+      run.to = to; // extend the current contiguous same-id run
+    } else {
+      flush();
+      run = { id, from, to };
     }
     return true;
   });
+  flush();
 
   return highlights;
 }

@@ -18,6 +18,7 @@ import type { MilkdownPlugin } from '@milkdown/ctx';
 import type { EditorView } from '@milkdown/prose/view';
 import type { Node as PMNode } from '@milkdown/prose/model';
 import { configureStringify } from './editor-preset';
+import { commentAnchorPlugins } from './comment-mark';
 import { roundTrip } from './roundtrip';
 
 export interface DocloopEditor {
@@ -60,7 +61,12 @@ export async function createEditor(
       }));
     })
     .use(commonmark)
-    .use(gfm);
+    .use(gfm)
+    // The comment-anchor schema mark + its remark transformer (M2 Step 1). This
+    // turns `<mark data-thread="id">…</mark>` into a real PM mark that survives
+    // editing, instead of M1's brittle raw-html-node pairs. Registered for the
+    // read view too so the mark is in the schema everywhere the doc is loaded.
+    .use(commentAnchorPlugins);
 
   // Extra ProseMirror plugins (e.g. the decoration painter) registered last so
   // they sit on top of the preset.

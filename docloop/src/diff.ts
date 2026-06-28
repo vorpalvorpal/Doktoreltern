@@ -15,15 +15,27 @@ export type DiffSegment = {
  * no `---`, the whole doc is body.
  */
 function bodyOf(markdown: string): string {
-  // Find the LAST `---` on its own line. lastIndexOf over a per-line scan keeps
-  // this simple and greppable; a regex with the `g` flag + reduce would do too.
+  return splitFoot(markdown).body;
+}
+
+/**
+ * Split a docloop document at its **last** `---` line into the `body` (above) and
+ * `foot` (the `---` line and everything below, i.e. the foot-region). Joining
+ * `body` + `foot` with a single `\n` reconstructs the document when foot is
+ * present. Exported so the hunk accept/reject ops (src/hunks.ts) can edit the
+ * body and re-attach the untouched foot-region.
+ */
+export function splitFoot(markdown: string): { body: string; foot: string } {
   const lines = markdown.split('\n');
   let lastRule = -1;
   for (let i = 0; i < lines.length; i++) {
     if (/^---\s*$/.test(lines[i])) lastRule = i;
   }
-  if (lastRule === -1) return markdown;
-  return lines.slice(0, lastRule).join('\n');
+  if (lastRule === -1) return { body: markdown, foot: '' };
+  return {
+    body: lines.slice(0, lastRule).join('\n'),
+    foot: lines.slice(lastRule).join('\n'),
+  };
 }
 
 /**
