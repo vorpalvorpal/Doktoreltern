@@ -85,7 +85,7 @@ export function appendReply(md: string, id: string, reply: string): string {
 }
 
 /**
- * Resolve/remove a thread: unwrap its `<mark data-thread="id">…</mark>` anchor in
+ * Resolve/remove a thread: unwrap its `:mark[…]{#id}` / `:::mark{#id}` anchor in
  * the body back to plain text, and delete its `<article>` from the foot-region.
  * Other threads are left untouched.
  */
@@ -93,9 +93,12 @@ export function removeThread(md: string, id: string): string {
   const esc = reEscape(id);
   let out = md;
 
-  // 1. Unwrap the mark: `<mark data-thread="id">TEXT</mark>` -> `TEXT`.
-  const markRe = new RegExp(`<mark\\s+data-thread="${esc}">([\\s\\S]*?)</mark>`, 'g');
-  out = out.replace(markRe, '$1');
+  // 1. Unwrap the anchor back to plain text. Inline `:mark[TEXT]{#id}` -> `TEXT`;
+  //    container `:::mark{#id}\nBLOCKS\n:::` -> `BLOCKS`.
+  const inlineRe = new RegExp(`:mark\\[([\\s\\S]*?)\\]\\{#${esc}\\}`, 'g');
+  out = out.replace(inlineRe, '$1');
+  const blockRe = new RegExp(`:::mark\\{#${esc}\\}\\n([\\s\\S]*?)\\n:::`, 'g');
+  out = out.replace(blockRe, '$1');
 
   // 2. Delete the article line entirely. Match the article plus an optional
   //    trailing newline so we don't leave a blank gap where it stood.

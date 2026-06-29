@@ -50,15 +50,15 @@ describe('renderTurn (M3 LLM-facing turn render)', () => {
     expect(xml).toMatch(/<ins>\s*Y\s*<\/ins>/);
   });
 
-  it('unwraps <mark> anchors: editing a marked span shows plain text, not tags', () => {
+  it('unwraps anchor directives: editing a marked span shows plain text, not the directive', () => {
     const oldMd =
-      'Body with a <mark data-thread="t1">good claim</mark> here.\n\n---\n\n<article data-thread="t1">rjs: ok?</article>';
+      'Body with a :mark[good claim]{#t1} here.\n\n---\n\n<article data-thread="t1">rjs: ok?</article>';
     const newMd =
-      'Body with a <mark data-thread="t1">great claim</mark> here.\n\n---\n\n<article data-thread="t1">rjs: ok?</article>';
+      'Body with a :mark[great claim]{#t1} here.\n\n---\n\n<article data-thread="t1">rjs: ok?</article>';
     const xml = renderTurn(oldMd, newMd);
     const edits = xml.slice(xml.indexOf('<edits'));
-    expect(edits).not.toContain('mark'); // no <mark> / data-thread scaffolding
-    expect(edits).not.toContain('data-thread');
+    expect(edits).not.toContain('mark'); // no :mark scaffolding
+    expect(edits).not.toContain('{#'); // no directive id
     expect(edits).toMatch(/<ins>great\s*<\/ins>/);
     expect(edits).toMatch(/<del>good\s*<\/del>/);
   });

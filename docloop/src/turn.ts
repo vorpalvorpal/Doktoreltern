@@ -52,12 +52,15 @@ function headingAt(headings: Heading[], offset: number): string | null {
 }
 
 /**
- * Strip `<mark data-thread="…">TEXT</mark>` anchors to plain `TEXT`. The edit diff
+ * Strip comment-anchor directives to their plain text — inline `:mark[TEXT]{#id}`
+ * -> `TEXT` and container `:::mark{#id}\nBLOCKS\n:::` -> `BLOCKS`. The edit diff
  * runs on the *unwrapped* body so annotation scaffolding never appears as `<ins>`/
  * `<del>` — the thread itself is already surfaced in the `<threads>` group.
  */
 function unwrapMarks(md: string): string {
-  return md.replace(/<mark\s+data-thread="[^"]*">([\s\S]*?)<\/mark>/g, '$1');
+  return md
+    .replace(/:mark\[([\s\S]*?)\]\{#[^}]+\}/g, '$1')
+    .replace(/:::mark\{#[^}]+\}\n([\s\S]*?)\n:::/g, '$1');
 }
 
 /** Minimal XML text/attr escaping. */
@@ -128,8 +131,8 @@ export function renderTurn(oldMarkdown: string, newMarkdown: string): string {
   const threadItems: SectionItem[] = [];
   for (const t of extractThreads(newMarkdown)) {
     // Locate the anchor in the body to pick its enclosing section. Orphan bodies
-    // (no <mark>) fall back to the preamble.
-    const at = threadBody.indexOf(`data-thread="${t.id}"`);
+    // (no anchor) fall back to the preamble.
+    const at = threadBody.indexOf(`{#${t.id}}`);
     const heading = at >= 0 ? headingAt(threadHeadings, at) : null;
 
     const attrs = t.anchor ? ` anchor="${esc(t.anchor)}"` : '';

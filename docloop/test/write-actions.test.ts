@@ -62,13 +62,13 @@ describe('write actions (GUI integration)', () => {
     expect(mine).toBeTruthy();
     expect(ed.view.state.doc.textBetween(mine!.from, mine!.to)).toBe('quick');
 
-    // ...and the markdown has both the <mark> and the new <article>, byte-clean,
-    // and STILL round-trips (idempotent reload).
+    // ...and the markdown has both the anchor directive and the new <article>,
+    // byte-clean, and STILL round-trips (idempotent reload).
     const md = currentMarkdown(ed);
-    expect(md).toContain(`<mark data-thread="${id}">quick</mark>`);
+    expect(md).toContain(`:mark[quick]{#${id}}`);
     expect(md).toContain(`<article data-thread="${id}">is this the right adjective?</article>`);
     // the pre-existing t1 thread is untouched
-    expect(md).toContain('<mark data-thread="t1">questionable claim</mark>');
+    expect(md).toContain(':mark[questionable claim]{#t1}');
 
     // reload is a fixpoint (no drift): load it again and re-serialise.
     loadMarkdown(ed, md);
@@ -104,7 +104,7 @@ describe('write actions (GUI integration)', () => {
     loadMarkdown(ed, reverted);
     expect(currentMarkdown(ed)).not.toContain('brown'); // insertion reverted
     // anchors and threads survive a hunk reject (foot-region carried through)
-    expect(currentMarkdown(ed)).toContain('<mark data-thread="t1">questionable claim</mark>');
+    expect(currentMarkdown(ed)).toContain(':mark[questionable claim]{#t1}');
   });
 
   it('Accept hunk: advances the baseline so it stops diffing, others remain', async () => {

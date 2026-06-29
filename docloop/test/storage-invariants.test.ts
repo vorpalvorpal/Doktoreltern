@@ -36,12 +36,12 @@ describe('docloop storage invariants (supplementary to the M0 gate)', () => {
     expect(thrice).toBe(once);
   });
 
-  it('round-trips raw-HTML attribute values byte-for-byte', async () => {
-    // Stronger than the gate's substring checks: the exact attribute text
-    // (quotes included) must survive on all four tag types.
+  it('round-trips the anchor directive + raw-HTML values byte-for-byte', async () => {
+    // Stronger than the gate's substring checks: the exact anchor + the raw-HTML
+    // attribute text (quotes included) must survive.
     const out = await roundTrip(fixture);
     expect(out).toContain('data-thread="t1"');
-    expect(out).toContain('<mark data-thread="t1">commented span</mark>');
+    expect(out).toContain(':mark[commented span]{#t1}');
     expect(out).toContain('<ins>an inserted span</ins>');
     expect(out).toContain('<del>a deleted span</del>');
     expect(out).toContain(

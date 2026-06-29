@@ -6,12 +6,12 @@ const countRules = (md: string) => (md.match(/^---\s*$/gm) ?? []).length;
 
 describe('foot-region thread ops', () => {
   it('addThread appends an <article>, creating the --- foot-region if absent', () => {
-    const md = 'Body with a <mark data-thread="t1">span</mark>.';
+    const md = 'Body with a :mark[span]{#t1}.';
     const out = addThread(md, 't1', 'first comment');
     expect(out).toContain('<article data-thread="t1">first comment</article>');
     expect(countRules(out)).toBe(1); // foot-region delimiter created
-    // the body (and its <mark>) above the delimiter is untouched
-    expect(out).toContain('Body with a <mark data-thread="t1">span</mark>.');
+    // the body (and its anchor) above the delimiter is untouched
+    expect(out).toContain('Body with a :mark[span]{#t1}.');
     // and the new article is part of a recognised thread
     expect(extractThreads(out).find((t) => t.id === 't1')?.body).toContain('first comment');
   });
@@ -32,20 +32,21 @@ describe('foot-region thread ops', () => {
     expect(body).toContain('answer!');
   });
 
-  it('removeThread unwraps the <mark> in the body and deletes the <article>', () => {
+  it('removeThread unwraps the anchor in the body and deletes the <article>', () => {
     const md =
-      'A <mark data-thread="t1">span</mark> here.\n\n---\n\n<article data-thread="t1">body</article>';
+      'A :mark[span]{#t1} here.\n\n---\n\n<article data-thread="t1">body</article>';
     const out = removeThread(md, 't1');
-    expect(out).toContain('A span here.'); // mark unwrapped to plain text
-    expect(out).not.toContain('data-thread="t1"'); // both mark and article gone
+    expect(out).toContain('A span here.'); // anchor unwrapped to plain text
+    expect(out).not.toContain('{#t1}'); // anchor gone
+    expect(out).not.toContain('data-thread="t1"'); // article gone
   });
 
   it('removeThread leaves other threads intact', () => {
     const md =
-      'X <mark data-thread="t1">a</mark> Y <mark data-thread="t2">b</mark>.\n\n---\n\n<article data-thread="t1">one</article>\n<article data-thread="t2">two</article>';
+      'X :mark[a]{#t1} Y :mark[b]{#t2}.\n\n---\n\n<article data-thread="t1">one</article>\n<article data-thread="t2">two</article>';
     const out = removeThread(md, 't1');
-    expect(out).not.toContain('data-thread="t1"');
-    expect(out).toContain('<mark data-thread="t2">b</mark>');
+    expect(out).not.toContain('{#t1}');
+    expect(out).toContain(':mark[b]{#t2}');
     expect(out).toContain('<article data-thread="t2">two</article>');
   });
 });

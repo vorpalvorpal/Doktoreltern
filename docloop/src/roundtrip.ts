@@ -25,6 +25,7 @@ import {
 import { commonmark } from '@milkdown/preset-commonmark';
 import { gfm } from '@milkdown/preset-gfm';
 import { getMarkdown } from '@milkdown/utils';
+import { directivePlugins } from './anchor';
 
 export async function roundTrip(markdown: string): Promise<string> {
   // jsdom (provided by the Vitest `jsdom` environment) gives us `document`,
@@ -56,6 +57,9 @@ export async function roundTrip(markdown: string): Promise<string> {
     // matches what docloop will actually run.
     .use(commonmark)
     .use(gfm)
+    // Same anchor directives as the live editor, so the pre-canonicalise pass
+    // (editor.ts) doesn't mangle `:mark…` into escaped text.
+    .use(directivePlugins)
     .create();
 
   try {

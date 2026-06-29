@@ -20,7 +20,8 @@ accept/reject) · **M3** the doc↔LLM loop.
    `workspace/doc.md` and commits it in the workspace's own git repo
    (**commit == turn**), and renders the human's delta to `workspace/turn.xml`.
 2. **Claude** (hand-simulating the MCP for this v0 — see the wiki dogfooding note)
-   reads `turn.xml`, edits `doc.md`, and commits.
+   reads `turn.xml`, edits `doc.md`, **normalises it** with
+   `npm run canonicalize -- workspace/doc.md`, then commits.
 3. The human clicks **Reload** → `GET /doc` returns `current` (HEAD) and
    `baseline` (the commit before it); the read view diffs them, so Claude's edits
    appear as `<ins>`/`<del>` decorations and any new replies show in the sidebar.
@@ -28,6 +29,15 @@ accept/reject) · **M3** the doc↔LLM loop.
 `turn.xml` is the LLM-facing render (`src/turn.ts`): **XML**, edits grouped by
 their enclosing heading, **open items (threads) first**. It's a pure, tested
 string transform — the deterministic core of the future MCP. See `test/turn.test.ts`.
+
+**Normalisation (both sides emit canonical markdown).** The git diff is only
+honest if every commit is byte-identical to what the editor would save, else it
+fills with cosmetic noise (`<br>`→`<br />`, bullet/rule spacing, escaping). The
+human side gets this for free (the GUI saves `getMarkdown()`); the LLM side runs
+`canonicalize()` (`src/canonicalize.ts`, exposed as `npm run canonicalize`) — the
+**same** editor serialiser, so the two sides agree. Raw LLM markdown looks clean
+the turn it lands (the editor canonicalises on load) but re-flows once it becomes
+the next turn's diff baseline; normalising at write time prevents that.
 
 ## M0 — round-trip gate (the foundation)
 

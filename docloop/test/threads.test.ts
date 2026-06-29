@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { extractThreads, splitTurns } from '../src/threads';
 
 describe('extractThreads', () => {
-  it('joins a <mark> anchor with its <article> body by data-thread id', () => {
+  it('joins a :mark anchor with its <article> body by thread id', () => {
     const md = [
-      'A sentence with a <mark data-thread="t1">commented span</mark> in it.',
+      'A sentence with a :mark[commented span]{#t1} in it.',
       '',
       '---',
       '',
@@ -17,7 +17,7 @@ describe('extractThreads', () => {
 
   it('returns threads in document order of their anchors', () => {
     const md = [
-      '<mark data-thread="t2">second</mark> then <mark data-thread="t1">first</mark>.',
+      ':mark[second]{#t2} then :mark[first]{#t1}.',
       '',
       '---',
       '<article data-thread="t1">b1</article>',
@@ -26,8 +26,8 @@ describe('extractThreads', () => {
     expect(extractThreads(md).map((t) => t.id)).toEqual(['t2', 't1']);
   });
 
-  it('reports an orphan mark (no matching article) with body null', () => {
-    const md = 'An <mark data-thread="t9">orphan</mark> mark.';
+  it('reports an orphan anchor (no matching article) with body null', () => {
+    const md = 'An :mark[orphan]{#t9} mark.';
     expect(extractThreads(md)).toEqual([
       { id: 't9', anchor: 'orphan', body: null },
     ]);

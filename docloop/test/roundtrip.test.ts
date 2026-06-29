@@ -24,9 +24,9 @@ describe('M0 — Milkdown markdown round-trip (gate)', () => {
     expect(out).toMatch(/\*emphasis\*|_emphasis_/);
   });
 
-  it('preserves the <mark> comment-anchor with its data-thread attribute', async () => {
+  it('preserves the :mark comment-anchor directive with its id', async () => {
     const out = await roundTrip(fixture);
-    expect(out).toContain('<mark data-thread="t1">commented span</mark>');
+    expect(out).toContain(':mark[commented span]{#t1}');
   });
 
   it('preserves the <ins>/<del> diff tags as raw HTML', async () => {

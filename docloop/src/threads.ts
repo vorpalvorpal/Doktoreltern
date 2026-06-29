@@ -1,25 +1,29 @@
 export interface Thread {
-  /** the `data-thread` id shared by the `<mark>` anchor and its `<article>` body */
+  /** the id shared by the `:mark`/`:::mark` anchor and its `<article>` body */
   id: string;
-  /** the text inside the `<mark>` (the highlighted span in the body) */
+  /** the text inside the anchor (the highlighted span in the body) */
   anchor: string;
   /** the `<article>` foot-region body, or null for an orphan mark */
   body: string | null;
 }
 
-// `<mark data-thread="ID">ANCHOR</mark>` — the inline comment anchor.
-// We capture the id and the inner text. Non-greedy inner match so adjacent
-// marks on one line stay separate.
-const MARK_RE = /<mark\s+data-thread="([^"]+)">([\s\S]*?)<\/mark>/g;
+// `:mark[ANCHOR]{#ID}` — the inline comment anchor (a remark directive).
+// Captures the inner text then the id. Non-greedy inner match so adjacent anchors
+// on one line stay separate.
+const MARK_RE = /:mark\[([\s\S]*?)\]\{#([^}]+)\}/g;
+
+// `:::mark{#ID}` — the container (multi-block) anchor opener. Captures the id;
+// the wrapped blocks are the body content, not needed for thread extraction.
+const BLOCK_RE = /:::mark\{#([^}]+)\}/g;
 
 // `<article data-thread="ID">BODY</article>` — the foot-region thread body.
 const ARTICLE_RE = /<article\s+data-thread="([^"]+)">([\s\S]*?)<\/article>/g;
 
 /**
  * Extract comment threads from a docloop markdown document:
- * `<mark data-thread="id">anchor</mark>` inline anchors joined, by id, with their
+ * `:mark[anchor]{#id}` / `:::mark{#id}` directive anchors joined, by id, with their
  * `<article data-thread="id">body</article>` foot-region bodies. Returns one
- * entry per `<mark>`, in document order; an anchor with no matching `<article>`
+ * entry per id, in document order; an anchor with no matching `<article>`
  * yields `body: null`.
  *
  * Kept as plain regex over the markdown string (not a DOM parse) so the same
@@ -34,26 +38,42 @@ export function extractThreads(markdown: string): Thread[] {
     bodies.set(m[1], m[2]);
   }
 
-  // Walk the marks in document order (matchAll yields left-to-right) so the
-  // returned list is ordered by where the anchors appear in the body.
-  const threads: Thread[] = [];
-  const seen = new Set<string>();
+  // Collect every anchor occurrence in document order: inline `:mark[…]{#id}`
+  // anchors carry their span text; container `:::mark{#id}` openers carry none.
+  const occ: { id: string; text: string; index: number }[] = [];
   for (const m of markdown.matchAll(MARK_RE)) {
-    const id = m[1];
-    seen.add(id);
-    threads.push({
-      id,
-      anchor: m[2],
-      body: bodies.has(id) ? bodies.get(id)! : null,
-    });
+    occ.push({ id: m[2], text: m[1], index: m.index ?? 0 });
+  }
+  for (const m of markdown.matchAll(BLOCK_RE)) {
+    occ.push({ id: m[1], text: '', index: m.index ?? 0 });
+  }
+  occ.sort((a, b) => a.index - b.index);
+
+  // One thread per id, first-seen order. A span broken by inline formatting
+  // serialises as several same-id anchors (see src/anchor.ts) — coalesce their
+  // text so the thread reads as one highlighted span.
+  const threads: Thread[] = [];
+  const byId = new Map<string, Thread>();
+  for (const o of occ) {
+    const existing = byId.get(o.id);
+    if (existing) {
+      if (o.text) existing.anchor = existing.anchor ? `${existing.anchor} ${o.text}` : o.text;
+      continue;
+    }
+    const thread: Thread = {
+      id: o.id,
+      anchor: o.text,
+      body: bodies.has(o.id) ? bodies.get(o.id)! : null,
+    };
+    byId.set(o.id, thread);
+    threads.push(thread);
   }
 
-  // Then append any thread that has an `<article>` body but no `<mark>` anchor.
-  // This surfaces a thread that exists only as a foot-region body — e.g. just
-  // after `addThread` runs but before/without an anchor, which the M2 write flow
-  // can momentarily produce. Such a thread has no in-body span, so `anchor: ''`.
+  // Then append any thread that has an `<article>` body but no anchor in the
+  // body — e.g. just after `addThread` runs but before/without an anchor, which
+  // the M2 write flow can momentarily produce. Such a thread has `anchor: ''`.
   for (const [id, body] of bodies) {
-    if (!seen.has(id)) threads.push({ id, anchor: '', body });
+    if (!byId.has(id)) threads.push({ id, anchor: '', body });
   }
 
   return threads;

@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "canonicalize": "vite-node scripts/canonicalize.ts",
     "test": "vitest run"
   },
   "dependencies": {
@@ -18,7 +19,8 @@
     "@milkdown/prose": "7.21.2",
     "@milkdown/transformer": "7.21.2",
     "@milkdown/utils": "7.21.2",
-    "diff": "^9.0.0"
+    "diff": "^9.0.0",
+    "remark-directive": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

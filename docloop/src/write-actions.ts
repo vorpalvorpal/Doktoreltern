@@ -17,7 +17,7 @@
 import { editorViewCtx } from '@milkdown/core';
 import { getMarkdown, replaceAll } from '@milkdown/utils';
 import type { DocloopEditor } from './editor';
-import { commentAnchorMark } from './comment-mark';
+import { commentAnchorMark } from './anchor';
 import { addThread, appendReply, removeThread } from './foot';
 
 /** A short, unique-ish thread id (`t` + base36 time + small random tail). */
@@ -65,7 +65,7 @@ export function addComment(ed: DocloopEditor, initialReply = ''): string | null 
   const mark = markType.create({ threadId: id });
   view.dispatch(view.state.tr.addMark(from, to, mark));
 
-  // 2. Serialise (now contains <mark …>span</mark>) and add the foot article.
+  // 2. Serialise (now contains :mark[span]{#id}) and add the foot article.
   const md = currentMarkdown(ed);
   loadMarkdown(ed, addThread(md, id, initialReply));
   return id;
