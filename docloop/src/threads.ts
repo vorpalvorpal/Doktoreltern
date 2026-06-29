@@ -87,6 +87,19 @@ export function unwrapAnchor(markdown: string, id: string): string {
     .replace(new RegExp(`:::mark\\{#${esc}\\}\\n([\\s\\S]*?)\\n:::`, 'g'), '$1');
 }
 
+/**
+ * Strip every comment anchor back to its plain text — inline `:mark[TEXT]{#id}`
+ * → `TEXT`, container `:::mark{#id}\nBLOCKS\n:::` → `BLOCKS`. The whole-document
+ * counterpart to {@link unwrapAnchor} (which targets one id). Used wherever a diff
+ * should see document *content* without anchor scaffolding (the turn render and
+ * the Changes panel), so opening/closing a thread never registers as an edit.
+ */
+export function stripAnchors(markdown: string): string {
+  return markdown
+    .replace(/:mark\[([\s\S]*?)\]\{#[^}]+\}/g, '$1')
+    .replace(/:::mark\{#[^}]+\}\n([\s\S]*?)\n:::/g, '$1');
+}
+
 /** Matches a `t<N>` thread id and captures the numeric suffix. */
 const ID_RE = /^t(\d+)$/;
 

@@ -26,6 +26,7 @@
  * simply stops flagging that span on the next re-derive.
  */
 import { computeDiff, type DiffSegment } from './diff';
+import { stripAnchors } from './threads';
 
 /** The hunks in a body diff, with their kind, for building UI controls. */
 export interface Hunk {
@@ -46,6 +47,19 @@ export function listHunks(oldMd: string, newMd: string): Hunk[] {
   return hunks;
 }
 
+/**
+ * The hunks a human is asked to accept/reject: the word-diff of the **anchor-
+ * stripped** bodies. Because anchors are removed from both sides before diffing,
+ * opening or closing a comment thread never registers as a hunk (and there is no
+ * scaffolding left to bundle into a content hunk — the entangled-edit case is
+ * gone). This matches the turn render and the inline decorations, both of which
+ * also diff the stripped body. {@link acceptHunk} / {@link rejectHunk} use the
+ * same stripped numbering, so an index from here addresses the right segment.
+ */
+export function listContentHunks(oldMd: string, newMd: string): Hunk[] {
+  return listHunks(stripAnchors(oldMd), stripAnchors(newMd));
+}
+
 /** Iterate diff segments, tagging each insert/delete with its 0-based hunk index. */
 function withHunkIndex(
   oldMd: string,
@@ -58,33 +72,88 @@ function withHunkIndex(
   });
 }
 
+// --- Anchor-preserving reconstruction (reject) --------------------------------
+//
+// reject must return WRAPPED markdown (it is loaded back into the editor), but
+// the diff/hunk numbering is on the STRIPPED body. So we walk the stripped diff
+// while consuming the wrapped `newMd` in parallel: equal / kept-insert segments
+// are copied from the wrapped string (carrying any anchor scaffolding along), the
+// rejected insert is dropped, and a restored deletion is spliced in as plain
+// baseline text. Anchors thus survive a reject untouched.
+
+/** Anchor tokens, anchored at the current index (mirrors stripAnchors exactly). */
+const OPENER = [/^:mark\[/, /^:::mark\{#[^}]+\}\n/];
+const CLOSER = [/^\]\{#[^}]+\}/, /^\n:::/];
+
+function matchLen(res: RegExp[], w: string, i: number): number {
+  const head = w.slice(i, i + 256);
+  for (const re of res) {
+    const m = re.exec(head);
+    if (m) return m[0].length;
+  }
+  return 0;
+}
+
 /**
- * Reject hunk `k`: return new live markdown with that hunk reverted to baseline.
- * The document is rebuilt from the diff — the rejected insertion is dropped, or
- * the rejected deletion restored — while every other hunk stays as it was.
+ * From wrapped `w` at `start`, consume exactly `count` STRIPPED characters,
+ * returning the covered wrapped slice (with interleaved anchor scaffolding) and
+ * the next index. Leading openers are pulled in while reaching content; trailing
+ * closers are attached to the span just consumed — so an anchor stays whole.
+ */
+function takeStripped(w: string, start: number, count: number): { slice: string; end: number } {
+  let i = start;
+  let taken = 0;
+  while (i < w.length && taken < count) {
+    const open = matchLen(OPENER, w, i);
+    if (open) { i += open; continue; }
+    const close = matchLen(CLOSER, w, i);
+    if (close) { i += close; continue; }
+    i += 1;
+    taken += 1;
+  }
+  // Attach any trailing closers that belong to the content we just consumed.
+  let close: number;
+  while ((close = matchLen(CLOSER, w, i)) > 0) i += close;
+  return { slice: w.slice(start, i), end: i };
+}
+
+/**
+ * Reject hunk `k`: return new WRAPPED live markdown with that hunk reverted to
+ * baseline — the rejected insertion dropped, or the rejected deletion restored —
+ * while every other hunk, and every comment anchor, stays put. The hunk index is
+ * the {@link listContentHunks} (stripped) numbering.
  */
 export function rejectHunk(oldMd: string, newMd: string, k: number): string {
-  const segs = withHunkIndex(oldMd, newMd);
+  const segs = withHunkIndex(stripAnchors(oldMd), stripAnchors(newMd));
   let out = '';
+  let w = 0; // cursor into the wrapped newMd
   for (const seg of segs) {
-    if (seg.type === 'equal') out += seg.value;
-    else if (seg.type === 'insert') {
-      if (seg.hunk !== k) out += seg.value; // drop the rejected insertion
-    } else {
-      // delete: present in old, absent in new. Restore it iff this is the hunk.
+    if (seg.type === 'delete') {
+      // Absent from new (so no wrapped chars to consume). Restore as plain text
+      // iff this is the rejected hunk.
       if (seg.hunk === k) out += seg.value;
+      continue;
     }
+    // equal or insert: present in the stripped new body, so present (possibly
+    // wrapped) in newMd. Consume the matching wrapped span.
+    const { slice, end } = takeStripped(newMd, w, seg.value.length);
+    w = end;
+    const drop = seg.type === 'insert' && seg.hunk === k;
+    if (!drop) out += slice;
   }
+  out += newMd.slice(w); // any trailing scaffolding past the last content char
   return out;
 }
 
 /**
- * Accept hunk `k`: return new baseline markdown with that hunk applied. The
- * baseline is rebuilt — the accepted insertion is added, or the accepted deletion
- * removed — so that hunk no longer diffs while the others still do.
+ * Accept hunk `k`: return the new baseline (anchor-stripped) with that hunk
+ * applied — the accepted insertion baked in, or the accepted deletion removed —
+ * so it stops diffing while the others still do. The baseline is only ever used
+ * for diffing (always stripped first), so returning it stripped is exact; the
+ * live doc, and its anchors, are untouched by accept.
  */
 export function acceptHunk(oldMd: string, newMd: string, k: number): string {
-  const segs = withHunkIndex(oldMd, newMd);
+  const segs = withHunkIndex(stripAnchors(oldMd), stripAnchors(newMd));
   let out = '';
   for (const seg of segs) {
     if (seg.type === 'equal') out += seg.value;

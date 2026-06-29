@@ -21,7 +21,7 @@
  * deltas is parked as a future refinement, not v0.
  */
 import { computeDiff } from './diff';
-import { extractAnchors } from './threads';
+import { extractAnchors, stripAnchors } from './threads';
 import type { Thread } from './threads-store';
 
 /** A heading found in the body, with the char offset where its line starts. */
@@ -52,17 +52,9 @@ function headingAt(headings: Heading[], offset: number): string | null {
   return found;
 }
 
-/**
- * Strip comment-anchor directives to their plain text — inline `:mark[TEXT]{#id}`
- * -> `TEXT` and container `:::mark{#id}\nBLOCKS\n:::` -> `BLOCKS`. The edit diff
- * runs on the *unwrapped* body so annotation scaffolding never appears as `<ins>`/
- * `<del>` — the thread itself is already surfaced in the `<threads>` group.
- */
-function unwrapMarks(md: string): string {
-  return md
-    .replace(/:mark\[([\s\S]*?)\]\{#[^}]+\}/g, '$1')
-    .replace(/:::mark\{#[^}]+\}\n([\s\S]*?)\n:::/g, '$1');
-}
+// Edits run on the anchor-stripped body (via stripAnchors) so annotation
+// scaffolding never appears as <ins>/<del> — the thread itself is already
+// surfaced in the <threads> group.
 
 /** Minimal XML text/attr escaping. */
 function esc(s: string): string {
@@ -129,7 +121,7 @@ export function renderTurn(
   // Anchors live in the document; locate them by id to pick their section. Edits
   // run on the unwrapped body so anchor scaffolding never shows up as a change.
   const threadHeadings = headingsOf(newMarkdown);
-  const editNew = unwrapMarks(newMarkdown);
+  const editNew = stripAnchors(newMarkdown);
   const editHeadings = headingsOf(editNew);
   const commentsById = new Map(store.map((t) => [t.id, t.comments]));
 
@@ -161,7 +153,7 @@ export function renderTurn(
   // reconstruct the new body, so the cursor stays accurate.)
   const editItems: SectionItem[] = [];
   let cursor = 0;
-  for (const seg of computeDiff(unwrapMarks(oldMarkdown), editNew)) {
+  for (const seg of computeDiff(stripAnchors(oldMarkdown), editNew)) {
     if (seg.type === 'equal') {
       cursor += seg.value.length;
       continue;

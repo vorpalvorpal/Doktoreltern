@@ -8,7 +8,7 @@ import {
   loadMarkdown,
   hasTextSelection,
 } from '../src/write-actions';
-import { acceptHunk, rejectHunk, listHunks } from '../src/hunks';
+import { acceptHunk, rejectHunk, listContentHunks } from '../src/hunks';
 import { findMarkHighlights } from '../src/decorations';
 import { OLD_MD, NEW_MD } from '../src/sample';
 
@@ -80,7 +80,7 @@ describe('write actions (document side)', () => {
     ed = await createEditor(document.createElement('div'), NEW_MD, { editable: true });
     // baseline OLD_MD vs live NEW_MD: insert "brown" (hunk 0), delete "lazy" (hunk 1)
     const md0 = currentMarkdown(ed);
-    const insHunk = listHunks(OLD_MD, md0).find((h) => h.type === 'insert')!;
+    const insHunk = listContentHunks(OLD_MD, md0).find((h) => h.type === 'insert')!;
     const reverted = rejectHunk(OLD_MD, md0, insHunk.index);
     loadMarkdown(ed, reverted);
     expect(currentMarkdown(ed)).not.toContain('brown'); // insertion reverted
@@ -91,9 +91,9 @@ describe('write actions (document side)', () => {
     ed = await createEditor(document.createElement('div'), NEW_MD, { editable: true });
     const live = currentMarkdown(ed);
     let baseline = OLD_MD;
-    const insHunk = listHunks(baseline, live).find((h) => h.type === 'insert')!;
+    const insHunk = listContentHunks(baseline, live).find((h) => h.type === 'insert')!;
     baseline = acceptHunk(baseline, live, insHunk.index);
-    const remaining = listHunks(baseline, live);
+    const remaining = listContentHunks(baseline, live);
     expect(remaining.some((h) => h.type === 'insert')).toBe(false);
     expect(remaining.some((h) => h.type === 'delete')).toBe(true);
     expect(currentMarkdown(ed)).toBe(live); // live doc unchanged by accept

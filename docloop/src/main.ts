@@ -36,7 +36,7 @@ import {
   resolveThread,
   type StoreThread,
 } from './threads-client';
-import { listHunks, acceptHunk, rejectHunk, type Hunk } from './hunks';
+import { listContentHunks, acceptHunk, rejectHunk, type Hunk } from './hunks';
 import { OLD_MD, NEW_MD, SAMPLE_THREADS } from './sample';
 
 /** Mutable app state: the editor, the diff baseline, and the cached store. */
@@ -238,7 +238,8 @@ async function rerender(app: App): Promise<void> {
   // 2. Sidebar (anchors joined with store comments) + 3. changes panel.
   const md = currentMarkdown(ed);
   await renderThreads(app, extractAnchors(md));
-  renderChanges(app, listHunks(app.baselineMd, md));
+  // Content edits only — opening/closing a thread is not an approvable change.
+  renderChanges(app, listContentHunks(app.baselineMd, md));
 }
 
 /** Render one comment body as a read-only Milkdown instance inside `host`. */
