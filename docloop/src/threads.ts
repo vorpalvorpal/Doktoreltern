@@ -8,11 +8,17 @@
  * reads those anchors back out (to drive the sidebar / turn render) and unwraps
  * them (on resolve).
  *
- * Kept as plain regex over the markdown string (not a DOM parse) so the same code
- * runs in node tests, the browser GUI, and the dev server, and so it stays
- * cheap/greppable — the storage scheme is deliberately plain-text (see CLAUDE.md
- * portability aim).
+ * Anchor *detection* ({@link extractAnchors}) goes through the real markdown
+ * parser (remark + remark-directive — the same directive grammar Milkdown uses),
+ * NOT a regex, so it is code-aware: a literal `:mark[…]{#id}` written inside
+ * inline code or a fenced block is correctly ignored rather than surfacing as a
+ * phantom thread. The string transforms ({@link unwrapAnchor}, {@link stripAnchors})
+ * stay regex-based — they need surgical, position-preserving edits (the hunk
+ * reconstruction in src/hunks.ts walks them in lock-step with the wrapped text).
  */
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
+import remarkDirective from 'remark-directive';
 
 /** A comment anchor in the document: the thread id and its highlighted span. */
 export interface Anchor {
@@ -22,45 +28,63 @@ export interface Anchor {
   text: string;
 }
 
-// `:mark[TEXT]{#ID}` — the inline comment anchor (a remark directive). Captures
-// the inner text then the id. Non-greedy inner match so adjacent anchors on one
-// line stay separate.
-const MARK_RE = /:mark\[([\s\S]*?)\]\{#([^}]+)\}/g;
+/** Directive name that marks our anchors (mirrors NAME in src/anchor.ts). */
+const NAME = 'mark';
 
-// `:::mark{#ID}` — the container (multi-block) anchor opener. Captures the id;
-// the wrapped blocks are document content, not part of the anchor's own text.
-const BLOCK_RE = /:::mark\{#([^}]+)\}/g;
+/** Shared markdown→mdast parser carrying the same directive grammar as the editor. */
+const mdastParser = unified().use(remarkParse).use(remarkDirective);
+
+/** A minimal mdast node shape — enough to walk for directives and collect text. */
+interface MdNode {
+  type: string;
+  name?: string;
+  value?: string;
+  attributes?: { id?: string };
+  children?: MdNode[];
+}
+
+/** Concatenate the visible text of an mdast subtree (text + inline code). */
+function mdastText(node: MdNode): string {
+  if (typeof node.value === 'string') return node.value;
+  return (node.children ?? []).map(mdastText).join('');
+}
 
 /**
  * Extract the comment anchors from a docloop markdown document, one entry per id
- * in document order. A span broken by inline formatting serialises as several
- * same-id directives (see src/anchor.ts) — their text is coalesced so the anchor
- * reads as one highlighted span. Container anchors contribute their id with empty
- * text (their span is whole blocks, surfaced in the doc, not a short quote).
+ * in document order. Parsed through remark-directive, so `:mark…`/`:::mark…`
+ * inside code is ignored. A span broken by inline formatting serialises as
+ * several same-id directives (see src/anchor.ts) — their text is coalesced so the
+ * anchor reads as one highlighted span. Container anchors contribute their id
+ * with empty text (their span is whole blocks, surfaced in the doc).
  */
 export function extractAnchors(markdown: string): Anchor[] {
-  // Collect every anchor occurrence in document order.
-  const occ: { id: string; text: string; index: number }[] = [];
-  for (const m of markdown.matchAll(MARK_RE)) {
-    occ.push({ id: m[2], text: m[1], index: m.index ?? 0 });
-  }
-  for (const m of markdown.matchAll(BLOCK_RE)) {
-    occ.push({ id: m[1], text: '', index: m.index ?? 0 });
-  }
-  occ.sort((a, b) => a.index - b.index);
-
   const anchors: Anchor[] = [];
   const byId = new Map<string, Anchor>();
-  for (const o of occ) {
-    const existing = byId.get(o.id);
-    if (existing) {
-      if (o.text) existing.text = existing.text ? `${existing.text} ${o.text}` : o.text;
-      continue;
+
+  const visit = (node: MdNode): void => {
+    const isDirective =
+      node.type === 'textDirective' ||
+      node.type === 'leafDirective' ||
+      node.type === 'containerDirective';
+    if (isDirective && node.name === NAME) {
+      const id = String(node.attributes?.id ?? '');
+      if (id) {
+        // Container anchors mark whole blocks; their "text" is not a short quote.
+        const text = node.type === 'containerDirective' ? '' : mdastText(node);
+        const existing = byId.get(id);
+        if (existing) {
+          if (text) existing.text = existing.text ? `${existing.text} ${text}` : text;
+        } else {
+          const anchor: Anchor = { id, text };
+          byId.set(id, anchor);
+          anchors.push(anchor);
+        }
+      }
     }
-    const anchor: Anchor = { id: o.id, text: o.text };
-    byId.set(o.id, anchor);
-    anchors.push(anchor);
-  }
+    for (const child of node.children ?? []) visit(child);
+  };
+
+  visit(mdastParser.parse(markdown) as unknown as MdNode);
   return anchors;
 }
 

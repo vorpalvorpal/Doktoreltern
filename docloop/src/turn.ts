@@ -150,8 +150,9 @@ export function renderTurn(
   const newAnchors = extractAnchors(newMarkdown);
   const newIds = new Set(newAnchors.map((a) => a.id));
 
-  // Compare as instants, NOT strings: `created` is UTC ('…Z') but git's %cI is a
-  // local offset ('…+10:00'), so a lexical compare is wrong across time zones.
+  // Both `created` and `sinceIso` are UTC ISO (the caller normalises the commit
+  // time to UTC). Still compare as instants via Date.parse, not as strings: that
+  // is robust to any zone/precision drift (e.g. `…00Z` vs `…00.000Z`).
   const sinceMs = sinceIso ? Date.parse(sinceIso) : NaN;
 
   // --- Threads: only those changed this turn, each with full current state. ---

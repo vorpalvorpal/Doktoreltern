@@ -22,6 +22,23 @@ describe('extractAnchors', () => {
     const md = ':::mark{#t9}\n\nA whole block.\n\n:::';
     expect(extractAnchors(md)).toEqual([{ id: 't9', text: '' }]);
   });
+
+  it('ignores anchor syntax inside inline code (no phantom thread)', () => {
+    // The exact bug hit in the doc's own format blurb: a literal :mark[…]{#id}
+    // written as inline code must NOT register as a thread.
+    const md = 'The format is `:mark[span]{#id}` — see the :mark[real one]{#t1}.';
+    expect(extractAnchors(md)).toEqual([{ id: 't1', text: 'real one' }]);
+  });
+
+  it('ignores anchor syntax inside a fenced code block', () => {
+    const md = ['Example:', '', '```', ':mark[y]{#qq} in a fence', '```', '', 'A :mark[live]{#t1} anchor.'].join('\n');
+    expect(extractAnchors(md)).toEqual([{ id: 't1', text: 'live' }]);
+  });
+
+  it('keeps inner formatting in the anchor text', () => {
+    const md = 'see :mark[the **bold** claim]{#t1} here';
+    expect(extractAnchors(md)).toEqual([{ id: 't1', text: 'the bold claim' }]);
+  });
 });
 
 describe('unwrapAnchor', () => {

@@ -20,7 +20,9 @@
     "@milkdown/transformer": "7.21.2",
     "@milkdown/utils": "7.21.2",
     "diff": "^9.0.0",
-    "remark-directive": "^4.0.0"
+    "remark-directive": "^4.0.0",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
