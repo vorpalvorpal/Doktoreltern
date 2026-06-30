@@ -26,9 +26,12 @@
       <section id="editor" class="doc"></section>
       <!-- Sidebar: pending changes + threads -->
       <aside id="sidebar" class="sidebar">
-        <h2>Changes</h2>
-        <ol id="changes" class="changes"></ol>
-        <h2>Threads</h2>
+        <div class="changes-panel">
+          <h2>Changes</h2>
+          <ol id="changes" class="changes"></ol>
+        </div>
+        <!-- Threads are a margin gutter: each card is absolutely positioned
+             beside its anchor in the doc (see layoutThreadCards in main.ts). -->
         <ol id="threads" class="threads"></ol>
       </aside>
     </main>

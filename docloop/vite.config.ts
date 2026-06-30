@@ -93,8 +93,11 @@ function docloopEndpoints(): Plugin {
             const store = await listThreads(threadsDir);
             // The previous commit's time bounds "added-to since last turn": a
             // comment created after it is new this turn. Null on the first commit.
-            const sinceIso = await git('show', '-s', '--format=%cI', 'HEAD')
-              .then(({ stdout }) => stdout.trim())
+            // Use %ct (UNIX epoch seconds — inherently UTC/zoneless) and emit a
+            // UTC ISO string, so the boundary matches the store's UTC `created`
+            // and no local-offset value is ever passed around.
+            const sinceIso = await git('show', '-s', '--format=%ct', 'HEAD')
+              .then(({ stdout }) => new Date(Number(stdout.trim()) * 1000).toISOString())
               .catch(() => null);
             await writeFile(turnPath, renderTurn(prevMd, newMd, store, sinceIso), 'utf8');
 
@@ -128,7 +131,13 @@ function docloopEndpoints(): Plugin {
             if (current === null) return send(res, 200, { ok: true, present: false });
             // baseline: the commit before HEAD (null if HEAD is the first commit).
             const baseline = await showDoc('HEAD~1');
-            send(res, 200, { ok: true, present: true, current, baseline });
+            // baselineIso: HEAD~1's commit time as UTC — the boundary of "the last
+            // turn" (current is HEAD; the last turn is HEAD~1 → HEAD), so the GUI
+            // can tell which comments arrived this turn. Null if HEAD is the first.
+            const baselineIso = await git('show', '-s', '--format=%ct', 'HEAD~1')
+              .then(({ stdout }) => new Date(Number(stdout.trim()) * 1000).toISOString())
+              .catch(() => null);
+            send(res, 200, { ok: true, present: true, current, baseline, baselineIso });
           } catch (err) {
             send(res, 500, { ok: false, error: String(err) });
           }

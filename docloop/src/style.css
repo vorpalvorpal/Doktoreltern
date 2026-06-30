@@ -2,18 +2,45 @@
    docloop-del, docloop-mark) and the sidebar badge are the load-bearing bits;
    everything else is just enough chrome to read the doc comfortably. */
 
+/* Claude-aligned palette. Light is the default; the dark block below mirrors it
+   and is selected by the user's appearance via prefers-color-scheme (which is how
+   the Claude Code preview reflects the chosen theme). `color-scheme` lets native
+   controls / scrollbars follow suit. */
 :root {
-  --bg: #ffffff;
-  --fg: #1a1a1a;
-  --muted: #6b7280;
-  --rule: #e5e7eb;
-  --ins-bg: #dcfce7; /* green-100 */
-  --ins-fg: #166534; /* green-800 */
-  --del-bg: #fee2e2; /* red-100  */
-  --del-fg: #991b1b; /* red-800  */
-  --mark-bg: #fef9c3; /* yellow-100 */
-  --mark-border: #eab308; /* yellow-500 */
-  --accent: #2563eb;
+  color-scheme: light dark;
+  --bg: #faf9f5; /* Claude warm ivory */
+  --panel: #ffffff;
+  --fg: #2b2a27; /* warm ink */
+  --muted: #6e6b66;
+  --rule: #e7e3da;
+  --code-bg: #f0eee6;
+  --ins-bg: #dcfce7;
+  --ins-fg: #166534;
+  --del-bg: #fee2e2;
+  --del-fg: #991b1b;
+  --mark-bg: #fbeede; /* warm highlight */
+  --mark-border: #d97757; /* Claude clay */
+  --accent: #d97757; /* Claude clay */
+  --accent-fg: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #262624; /* Claude warm charcoal */
+    --panel: #30302e;
+    --fg: #ece9e2;
+    --muted: #a29d93;
+    --rule: #403f3b;
+    --code-bg: #1f1e1d;
+    --ins-bg: #14331f;
+    --ins-fg: #86efac;
+    --del-bg: #3a1a1a;
+    --del-fg: #fca5a5;
+    --mark-bg: #3a2a1f; /* warm amber wash */
+    --mark-border: #d97757;
+    --accent: #d97757;
+    --accent-fg: #1a1a1a;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -60,8 +87,31 @@ body {
 .doc {
   line-height: 1.6;
   font-size: 1rem;
+  color: var(--fg);
 }
 .doc :first-child { margin-top: 0; }
+.doc a { color: var(--accent); }
+.doc code {
+  background: var(--code-bg);
+  border-radius: 4px;
+  padding: 0.05em 0.3em;
+  font-size: 0.88em;
+}
+.doc pre {
+  background: var(--code-bg);
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+  overflow: auto;
+}
+.doc pre code { background: none; padding: 0; }
+.doc blockquote {
+  margin: 0.8rem 0;
+  padding: 0.1rem 0 0.1rem 0.9rem;
+  border-left: 3px solid var(--rule);
+  color: var(--muted);
+}
+.doc hr { border: none; border-top: 1px solid var(--rule); margin: 1.2rem 0; }
+.doc th, .doc td { border: 1px solid var(--rule); padding: 0.3rem 0.5rem; }
 
 /* --- diff decorations --- */
 .docloop-ins {
@@ -85,26 +135,29 @@ body {
   background: var(--mark-bg);
   box-shadow: inset 0 -2px 0 var(--mark-border);
   border-radius: 2px;
-  position: relative;
 }
-.docloop-mark::after {
-  content: attr(data-badge);
+/* A SINGLE badge widget at the end of the anchor (one per thread, never once
+   per markup run). Rendered as its own inline element by the decoration. */
+.docloop-badge {
+  display: inline-block;
   font-size: 0.6rem;
   font-weight: 700;
+  line-height: 1.1;
   color: #fff;
   background: var(--mark-border);
   border-radius: 999px;
   padding: 0 0.3rem;
   margin-left: 0.15rem;
   vertical-align: super;
+  cursor: pointer;
+  user-select: none;
 }
 
-/* --- threads sidebar --- */
+/* --- threads margin gutter --- */
 .sidebar {
   border-left: 1px solid var(--rule);
   padding-left: 1.25rem;
-  position: sticky;
-  top: 1rem;
+  position: relative; /* positioning origin for the absolute thread cards */
 }
 .sidebar h2 {
   font-size: 0.8rem;
@@ -113,19 +166,62 @@ body {
   color: var(--muted);
   margin: 0 0 0.75rem;
 }
-.threads { list-style: none; margin: 0; padding: 0; }
+/* Changes stays in normal flow at the top, above the thread gutter. */
+.changes-panel {
+  position: relative;
+  z-index: 2;
+  background: var(--bg);
+  padding-bottom: 0.5rem;
+}
+/* The gutter spans the doc height; cards are positioned by JS at their anchor. */
+.threads {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: absolute;
+  top: 0;
+  left: 1.25rem;
+  right: 0;
+}
 .thread {
+  position: absolute;
+  left: 0;
+  right: 0;
   border: 1px solid var(--rule);
   border-radius: 8px;
   padding: 0.6rem 0.7rem;
-  margin-bottom: 0.6rem;
   font-size: 0.85rem;
+  background: var(--panel);
+  transition: top 0.12s ease;
 }
+/* The active (expanded) card floats above its neighbours while open. */
+.thread:not(.collapsed) { z-index: 3; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12); }
 .thread-head {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   margin-bottom: 0.3rem;
+  cursor: pointer;
+  user-select: none;
+}
+.thread-caret {
+  color: var(--muted);
+  width: 0.8rem;
+  flex: none;
+  font-size: 0.7rem;
+}
+.thread-count {
+  color: var(--muted);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+/* Collapsed: keep just the header row; hide the comments + reply box. */
+.thread.collapsed .thread-body,
+.thread.collapsed .reply-form {
+  display: none;
+}
+.thread.collapsed .thread-head {
+  margin-bottom: 0;
 }
 .thread-badge {
   display: inline-flex;
@@ -151,16 +247,16 @@ body {
   padding: 0.15rem 0.5rem;
   border: 1px solid var(--rule);
   border-radius: 6px;
-  background: #fff;
+  background: var(--panel);
   color: var(--fg);
   cursor: pointer;
 }
-.btn:hover { background: #f3f4f6; }
+.btn:hover { background: var(--code-bg); }
 .btn:disabled { opacity: 0.45; cursor: default; }
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-fg);
 }
 .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
 .btn-resolve { margin-left: auto; }
@@ -176,6 +272,8 @@ body {
   padding: 0.2rem 0.4rem;
   border: 1px solid var(--rule);
   border-radius: 6px;
+  background: var(--panel);
+  color: var(--fg);
 }
 
 /* --- changes panel --- */
@@ -189,6 +287,7 @@ body {
   padding: 0.4rem 0.55rem;
   margin-bottom: 0.45rem;
   font-size: 0.8rem;
+  background: var(--panel);
 }
 .change-label {
   flex: 1;

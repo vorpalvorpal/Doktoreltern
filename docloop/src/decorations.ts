@@ -186,15 +186,36 @@ export function findMarkHighlights(doc: PMNode): MarkHighlight[] {
   return highlights;
 }
 
-/** The <mark> highlight decorations as a flat list. */
+/** The comment-anchor decorations: a highlight span + ONE badge at its end. */
 export function markDecorationList(doc: PMNode): Decoration[] {
-  return findMarkHighlights(doc).map((h) =>
-    Decoration.inline(h.from, h.to, {
-      class: 'docloop-mark',
-      'data-thread': h.id,
-      'data-badge': String(h.index),
-    }),
-  );
+  const decos: Decoration[] = [];
+  for (const h of findMarkHighlights(doc)) {
+    // Highlight background over the whole span. When the span crosses inline
+    // formatting ProseMirror renders one wrapper per text run — that's fine for
+    // the background, but the badge must NOT repeat per run (the old `::after`
+    // bug), so it is a single widget below.
+    decos.push(
+      Decoration.inline(h.from, h.to, { class: 'docloop-mark', 'data-thread': h.id }),
+    );
+    // A single badge widget at the END of the highlight, cross-linking to the
+    // sidebar thread (it also gives the margin layout a precise anchor point).
+    decos.push(
+      Decoration.widget(h.to, () => makeBadge(h.id, h.index), {
+        side: 1,
+        key: `mark-badge-${h.id}`,
+      }),
+    );
+  }
+  return decos;
+}
+
+/** The little numbered pill that marks where a comment anchor ends. */
+function makeBadge(id: string, index: number): HTMLElement {
+  const el = document.createElement('span');
+  el.className = 'docloop-badge';
+  el.textContent = String(index);
+  el.setAttribute('data-thread', id);
+  return el;
 }
 
 export function buildMarkDecorations(doc: PMNode): DecorationSet {
