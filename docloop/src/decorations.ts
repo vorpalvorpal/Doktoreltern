@@ -11,6 +11,7 @@
 import type { Node as PMNode } from '@milkdown/prose/model';
 import { Decoration, DecorationSet } from '@milkdown/prose/view';
 import { computeDiff } from './diff';
+import { threadNumber } from './threads';
 
 /**
  * A flat view of a doc's text: the concatenated text content of every text node,
@@ -186,35 +187,40 @@ export function findMarkHighlights(doc: PMNode): MarkHighlight[] {
   return highlights;
 }
 
-/** The comment-anchor decorations: a highlight span + ONE badge at its end. */
+/** The comment-anchor decorations: highlight span(s) + ONE badge per thread. */
 export function markDecorationList(doc: PMNode): Decoration[] {
+  const highlights = findMarkHighlights(doc);
   const decos: Decoration[] = [];
-  for (const h of findMarkHighlights(doc)) {
-    // Highlight background over the whole span. When the span crosses inline
-    // formatting ProseMirror renders one wrapper per text run — that's fine for
-    // the background, but the badge must NOT repeat per run (the old `::after`
-    // bug), so it is a single widget below.
+
+  // Highlight background over every run. When a span crosses inline formatting
+  // ProseMirror renders one wrapper per text run — fine for the background.
+  for (const h of highlights) {
     decos.push(
       Decoration.inline(h.from, h.to, { class: 'docloop-mark', 'data-thread': h.id }),
     );
-    // A single badge widget at the END of the highlight, cross-linking to the
-    // sidebar thread (it also gives the margin layout a precise anchor point).
+  }
+
+  // ONE badge per thread id (not per run), at the END of its last run, numbered
+  // by the id via threadNumber so it always matches the sidebar. Cross-links to
+  // the thread and gives the margin layout a precise anchor point.
+  const lastTo = new Map<string, number>();
+  for (const h of highlights) lastTo.set(h.id, Math.max(lastTo.get(h.id) ?? 0, h.to));
+  for (const [id, to] of lastTo) {
     decos.push(
-      Decoration.widget(h.to, () => makeBadge(h.id, h.index), {
-        side: 1,
-        key: `mark-badge-${h.id}`,
-      }),
+      Decoration.widget(to, () => makeBadge(id), { side: 1, key: `mark-badge-${id}` }),
     );
   }
   return decos;
 }
 
 /** The little numbered pill that marks where a comment anchor ends. */
-function makeBadge(id: string, index: number): HTMLElement {
+function makeBadge(id: string): HTMLElement {
   const el = document.createElement('span');
   el.className = 'docloop-badge';
-  el.textContent = String(index);
+  el.textContent = threadNumber(id);
   el.setAttribute('data-thread', id);
+  el.setAttribute('role', 'button');
+  el.title = 'Go to comment';
   return el;
 }
 

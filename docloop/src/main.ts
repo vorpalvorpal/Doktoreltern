@@ -22,7 +22,7 @@ import { DecorationSet } from '@milkdown/prose/view';
 import { createEditor, type DocloopEditor } from './editor';
 import { buildReadViewDecorations } from './decorations';
 import { decorationPlugin, decoPluginKey } from './deco-plugin';
-import { extractAnchors, nextThreadId, type Anchor } from './threads';
+import { extractAnchors, nextThreadId, threadNumber, type Anchor } from './threads';
 import {
   applyAnchor,
   removeAnchor,
@@ -53,7 +53,9 @@ interface App {
   baselineIso: string | null;
   /** thread ids currently expanded; the rest are collapsed in the sidebar */
   expanded: Set<string>;
-  /** whether {@link initCollapse} has seeded `expanded` for the loaded turn yet */
+  /** expanded comment keys (`<threadId>#<seq>`); the rest are folded to a preview */
+  expandedComments: Set<string>;
+  /** whether {@link initCollapse} has seeded the collapse state for this turn yet */
   collapseInitialized: boolean;
   els: {
     threads: HTMLElement;
@@ -130,6 +132,7 @@ async function main(): Promise<void> {
     commentEditors: [],
     baselineIso,
     expanded: new Set(),
+    expandedComments: new Set(),
     collapseInitialized: false,
     els: { threads: threadList, changes, addBtn },
     focusReplyFor: null,
@@ -180,6 +183,16 @@ async function main(): Promise<void> {
       }
     });
   }
+
+  // Clicking an in-text badge jumps to its thread and opens the reply box.
+  ed.view.dom.addEventListener('click', (e) => {
+    const badge = (e.target as HTMLElement).closest?.('.docloop-badge');
+    const id = badge?.getAttribute('data-thread');
+    if (id) {
+      e.preventDefault();
+      void focusThread(app, id);
+    }
+  });
 
   await rerender(app);
 
@@ -330,25 +343,45 @@ function layoutThreadCards(app: App): void {
 }
 
 /**
- * Seed the collapse state for the just-loaded turn: every thread starts collapsed
- * EXCEPT those that changed on the last turn — opened (anchor new vs the baseline
- * doc) or updated (a comment created after the previous commit, `baselineIso`).
- * Runs once per loaded turn; user toggles and later mutations are preserved
- * because rerender doesn't re-seed (the Reload handler clears the flag).
+ * Seed the collapse state for the just-loaded turn:
+ *   - a **comment** starts open iff it is new this turn (created after the previous
+ *     commit, `baselineIso`); every other comment folds to a one-line preview;
+ *   - a **thread** starts open iff it was opened this turn (anchor new vs the
+ *     baseline doc) or holds a new comment; otherwise it's collapsed to declutter.
+ * Runs once per loaded turn; user toggles and later mutations are preserved because
+ * rerender doesn't re-seed (the Reload handler clears the flag).
  */
 function initCollapse(app: App, anchors: Anchor[]): void {
   app.expanded = new Set();
+  app.expandedComments = new Set();
   const sinceMs = app.baselineIso ? Date.parse(app.baselineIso) : NaN;
+  const isNew = (c: { created: string }) =>
+    !Number.isNaN(sinceMs) && Date.parse(c.created) > sinceMs;
   const prevIds = new Set(extractAnchors(app.baselineMd).map((a) => a.id));
   const commentsById = new Map(app.threads.map((t) => [t.id, t.comments]));
   for (const a of anchors) {
+    const comments = commentsById.get(a.id) ?? [];
+    for (const c of comments) if (isNew(c)) app.expandedComments.add(`${a.id}#${c.seq}`);
     const opened = !prevIds.has(a.id);
-    const updated = (commentsById.get(a.id) ?? []).some(
-      (c) => !Number.isNaN(sinceMs) && Date.parse(c.created) > sinceMs,
-    );
-    if (opened || updated) app.expanded.add(a.id);
+    if (opened || comments.some(isNew)) app.expanded.add(a.id);
   }
   app.collapseInitialized = true;
+}
+
+/**
+ * Focus a thread from an in-text badge click: open the thread, unfold its most
+ * recent comment (the one you'd be replying to), focus the reply box, and scroll
+ * the card into view.
+ */
+async function focusThread(app: App, id: string): Promise<void> {
+  app.expanded.add(id);
+  const comments = app.threads.find((t) => t.id === id)?.comments ?? [];
+  if (comments.length) app.expandedComments.add(`${id}#${comments[comments.length - 1].seq}`);
+  app.focusReplyFor = id;
+  await rerender(app);
+  app.els.threads
+    .querySelector(`.thread[data-thread="${id}"]`)
+    ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 /** Render one comment body as a read-only Milkdown instance inside `host`. */
@@ -404,7 +437,7 @@ async function renderThreads(app: App, anchors: Anchor[]): Promise<void> {
 
     const badge = document.createElement('span');
     badge.className = 'thread-badge';
-    badge.textContent = String(i + 1);
+    badge.textContent = threadNumber(a.id); // same source as the in-text badge
     head.appendChild(badge);
 
     const anchorEl = document.createElement('span');
@@ -452,14 +485,43 @@ async function renderThreads(app: App, anchors: Anchor[]): Promise<void> {
       bodyHost.appendChild(none);
     } else {
       for (const c of comments) {
+        const key = `${a.id}#${c.seq}`;
+        const cCollapsed = !app.expandedComments.has(key);
         const item = document.createElement('div');
-        item.className = 'comment';
+        item.className = cCollapsed ? 'comment collapsed' : 'comment';
+        bodyHost.appendChild(item);
+
+        // Comment header: caret + author + a one-line preview (shown collapsed).
+        const cHead = document.createElement('div');
+        cHead.className = 'comment-head';
+        cHead.title = 'Click to expand / collapse this comment';
+        const cCaret = document.createElement('span');
+        cCaret.className = 'comment-caret';
+        cCaret.textContent = cCollapsed ? '▸' : '▾';
+        cHead.appendChild(cCaret);
         const meta = document.createElement('span');
         meta.className = 'comment-meta';
         meta.textContent = c.author;
-        item.appendChild(meta);
-        bodyHost.appendChild(item);
-        await renderComment(app, item, c.body);
+        cHead.appendChild(meta);
+        const preview = document.createElement('span');
+        preview.className = 'comment-preview';
+        preview.textContent = c.body.replace(/\s+/g, ' ').trim().slice(0, 80);
+        cHead.appendChild(preview);
+        item.appendChild(cHead);
+
+        // Comment body (read-only Milkdown), hidden while the comment is folded.
+        const cBody = document.createElement('div');
+        cBody.className = 'comment-body-host';
+        item.appendChild(cBody);
+        await renderComment(app, cBody, c.body);
+
+        cHead.addEventListener('click', () => {
+          const nc = item.classList.toggle('collapsed');
+          cCaret.textContent = nc ? '▸' : '▾';
+          if (nc) app.expandedComments.delete(key);
+          else app.expandedComments.add(key);
+          scheduleLayout(app); // height changed → restack the gutter
+        });
       }
     }
 
@@ -514,8 +576,21 @@ function renderChanges(app: App, hunks: Hunk[]): void {
 
     const label = document.createElement('span');
     label.className = 'change-label';
-    const verb = h.type === 'insert' ? '+ ' : '− ';
-    label.textContent = verb + h.value.trim();
+    if (h.type === 'insert') {
+      label.textContent = `+ ${h.newValue.trim()}`;
+    } else if (h.type === 'delete') {
+      label.textContent = `− ${h.oldValue.trim()}`;
+    } else {
+      // replace: show old → new so the swap reads as one change.
+      const del = document.createElement('span');
+      del.className = 'change-del-text';
+      del.textContent = h.oldValue.trim();
+      const arrow = document.createTextNode(' → ');
+      const ins = document.createElement('span');
+      ins.className = 'change-ins-text';
+      ins.textContent = h.newValue.trim();
+      label.append(del, arrow, ins);
+    }
     li.appendChild(label);
 
     const accept = document.createElement('button');

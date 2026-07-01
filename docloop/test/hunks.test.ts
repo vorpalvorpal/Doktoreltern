@@ -1,106 +1,93 @@
 import { describe, it, expect } from 'vitest';
-import { listHunks, listContentHunks, acceptHunk, rejectHunk } from '../src/hunks';
+import { listContentHunks, acceptHunk, rejectHunk } from '../src/hunks';
 import { computeDiff } from '../src/diff';
 
-// M2 Step 4 — per-hunk accept/reject of the document word-diff. Pure markdown
-// transforms over the whole document (there is no foot-region any more).
+// Per-hunk accept/reject over the grouped word-diff. A hunk is a contiguous run of
+// changes: insert, delete, or replace (old→new). Pure markdown transforms; comment
+// anchors survive a reject.
 
-const OLD = 'the quick fox jumped over the lazy dog';
-const NEW = 'the quick brown fox jumped over the dog';
-// diff: insert "brown " (hunk 0), delete "lazy " (hunk 1)
+const diffEmpty = (a: string, b: string) => computeDiff(a, b).every((s) => s.type === 'equal');
 
-const diffEmpty = (a: string, b: string) =>
-  computeDiff(a, b).every((s) => s.type === 'equal');
+describe('listContentHunks (grouped)', () => {
+  it('groups an adjacent delete+insert into one replace hunk', () => {
+    const hs = listContentHunks('the cat sat', 'the dog sat');
+    expect(hs).toEqual([{ index: 0, type: 'replace', oldValue: 'cat', newValue: 'dog' }]);
+  });
 
-describe('hunks', () => {
-  it('lists insert and delete hunks in order', () => {
-    const hs = listHunks(OLD, NEW);
+  it('lists a pure insert and a pure delete when they are not adjacent', () => {
+    const hs = listContentHunks('the quick fox jumped over the lazy dog', 'the quick brown fox jumped over the dog');
     expect(hs.map((h) => h.type)).toEqual(['insert', 'delete']);
-    expect(hs[0].value).toContain('brown');
-    expect(hs[1].value).toContain('lazy');
+    expect(hs[0].newValue).toContain('brown');
+    expect(hs[1].oldValue).toContain('lazy');
   });
+});
 
-  it('reject(insert) removes the inserted text from the live doc', () => {
-    const out = rejectHunk(OLD, NEW, 0);
-    expect(out).not.toContain('brown');
-    // the other hunk (deletion of "lazy") is untouched: still absent in live
-    expect(out).not.toContain('lazy');
-  });
+describe('accept', () => {
+  it('accepting a replace bakes the new text in — and it does NOT come back', () => {
+    // Regression for the re-approval bug: accepting one side of a replace used to
+    // merge old+new in the baseline ("catdog") and resurface as a phantom change.
+    const base = 'the cat sat on the mat';
+    const live = 'the dog sat on the rug'; // two replaces
+    const hunks = listContentHunks(base, live);
+    expect(hunks.map((h) => h.type)).toEqual(['replace', 'replace']);
 
-  it('reject(delete) restores the deleted text in the live doc', () => {
-    const out = rejectHunk(OLD, NEW, 1);
-    expect(out).toContain('lazy'); // restored
-    expect(out).toContain('brown'); // the insert hunk stays accepted-as-is
-  });
-
-  it('accept(insert) advances the baseline so that hunk no longer diffs', () => {
-    const newBaseline = acceptHunk(OLD, NEW, 0);
-    expect(newBaseline).toContain('brown'); // baseline now has the insertion
-    // diffing live vs the new baseline: the insert hunk is gone, delete remains
-    const segs = computeDiff(newBaseline, NEW);
-    const ins = segs.filter((s) => s.type === 'insert');
-    const del = segs.filter((s) => s.type === 'delete');
-    expect(ins.length).toBe(0);
-    expect(del.map((s) => s.value).join('')).toContain('lazy');
-  });
-
-  it('accept(delete) advances the baseline so the deletion no longer diffs', () => {
-    const newBaseline = acceptHunk(OLD, NEW, 1);
-    expect(newBaseline).not.toContain('lazy'); // baseline no longer has it
-    const segs = computeDiff(newBaseline, NEW);
-    expect(segs.filter((s) => s.type === 'delete').length).toBe(0);
-  });
-
-  it('opening or closing a thread is not an approvable change', () => {
-    const plain = 'The quick fox jumped over the dog.';
-    const opened = 'The :mark[quick]{#t2} fox jumped over the dog.';
-    // Raw hunks see the scaffolding; content hunks (stripped diff) do not.
-    expect(listHunks(plain, opened).length).toBeGreaterThan(0);
-    expect(listContentHunks(plain, opened)).toEqual([]);
-    // Closing (resolve) is likewise invisible to the Changes panel.
-    expect(listContentHunks(opened, plain)).toEqual([]);
-  });
-
-  it('a content edit alongside an existing thread is approvable, anchor preserved on reject', () => {
-    const baseline = 'The :mark[quick]{#t2} fox jumped over the dog.';
-    const live = 'The :mark[quick]{#t2} fox jumped over the big dog.';
-    const content = listContentHunks(baseline, live);
-    expect(content.some((h) => h.value.includes('big'))).toBe(true);
-    const reverted = rejectHunk(baseline, live, content.find((h) => h.value.includes('big'))!.index);
-    expect(reverted).not.toContain('big');
-    expect(reverted).toContain(':mark[quick]{#t2}'); // thread untouched
-  });
-
-  it('rejects an edit landing RIGHT against an anchor without disturbing it (entangled case)', () => {
-    // A thread is opened on "quick" AND "brown" inserted next to it, same turn.
-    const baseline = 'The quick fox jumped over the dog.';
-    const live = 'The :mark[quick]{#t2} brown fox jumped over the dog.';
-    const content = listContentHunks(baseline, live);
-    // The stripped diff sees a clean "brown" insert — no scaffolding bundled in.
-    expect(content.map((h) => h.value.trim())).toEqual(['brown']);
-    // Rejecting it removes "brown" but leaves the freshly-opened thread intact.
-    const reverted = rejectHunk(baseline, live, content[0].index);
-    expect(reverted).toBe('The :mark[quick]{#t2} fox jumped over the dog.');
-  });
-
-  it('rejecting a deletion restores plain text next to an untouched anchor', () => {
-    const baseline = 'The :mark[quick]{#t2} brown fox jumped over the lazy dog.';
-    const live = 'The :mark[quick]{#t2} fox jumped over the dog.'; // brown + lazy deleted
-    const content = listContentHunks(baseline, live);
-    const lazyHunk = content.find((h) => h.value.includes('lazy'))!;
-    const reverted = rejectHunk(baseline, live, lazyHunk.index);
-    expect(reverted).toContain('lazy'); // deletion restored
-    expect(reverted).toContain(':mark[quick]{#t2}'); // anchor intact
-    expect(reverted).not.toContain('brown'); // the other deletion stays
+    const nb = acceptHunk(base, live, 0); // accept cat→dog
+    expect(nb).toBe('the dog sat on the mat'); // clean baseline, no "catdog"
+    const after = listContentHunks(nb, live);
+    expect(after).toEqual([{ index: 0, type: 'replace', oldValue: 'mat', newValue: 'rug' }]);
   });
 
   it('accepting every hunk makes the diff empty', () => {
-    const b1 = acceptHunk(OLD, NEW, 0);
-    // after accepting hunk 0, re-list hunks against the new baseline and accept
-    // the remaining one (now index 0).
-    const remaining = listHunks(b1, NEW);
-    expect(remaining.length).toBe(1);
-    const b2 = acceptHunk(b1, NEW, remaining[0].index);
-    expect(diffEmpty(b2, NEW)).toBe(true);
+    const base = 'the cat sat on the mat';
+    const live = 'the dog sat on the rug';
+    let b = acceptHunk(base, live, 0);
+    const rest = listContentHunks(b, live);
+    b = acceptHunk(b, live, rest[0].index);
+    expect(diffEmpty(b, live)).toBe(true);
+  });
+});
+
+describe('reject', () => {
+  it('reject(replace) swaps the span back to the baseline text', () => {
+    const out = rejectHunk('the cat sat', 'the dog sat', 0);
+    expect(out).toBe('the cat sat');
+  });
+
+  it('reject(insert) removes it; reject(delete) restores it', () => {
+    const base = 'the quick fox jumped over the lazy dog';
+    const live = 'the quick brown fox jumped over the dog';
+    const hunks = listContentHunks(base, live); // [insert brown, delete lazy]
+    const ins = hunks.find((h) => h.type === 'insert')!;
+    const del = hunks.find((h) => h.type === 'delete')!;
+    expect(rejectHunk(base, live, ins.index)).not.toContain('brown');
+    expect(rejectHunk(base, live, del.index)).toContain('lazy');
+  });
+});
+
+describe('anchors', () => {
+  it('opening or closing a thread is not a hunk', () => {
+    const plain = 'The quick fox.';
+    const opened = 'The :mark[quick]{#t2} fox.';
+    expect(listContentHunks(plain, opened)).toEqual([]);
+    expect(listContentHunks(opened, plain)).toEqual([]);
+  });
+
+  it('reject preserves a nearby comment anchor (entangled edit)', () => {
+    const base = 'The quick fox.';
+    const live = 'The :mark[quick]{#t2} brown fox.'; // thread opened + "brown" inserted
+    const hunks = listContentHunks(base, live);
+    expect(hunks.map((h) => h.type)).toEqual(['insert']); // clean insert, no scaffolding
+    const reverted = rejectHunk(base, live, hunks[0].index);
+    expect(reverted).toBe('The :mark[quick]{#t2} fox.'); // brown gone, thread intact
+  });
+
+  it('reject(replace) next to an anchor keeps the anchor', () => {
+    const base = 'A :mark[flag]{#t1} on the cat here.';
+    const live = 'A :mark[flag]{#t1} on the dog here.';
+    const hunks = listContentHunks(base, live);
+    expect(hunks).toEqual([{ index: 0, type: 'replace', oldValue: 'cat', newValue: 'dog' }]);
+    const reverted = rejectHunk(base, live, 0);
+    expect(reverted).toContain(':mark[flag]{#t1}');
+    expect(reverted).toContain('the cat here');
   });
 });

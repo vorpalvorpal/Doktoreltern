@@ -59,6 +59,10 @@ body {
   padding: 0.6rem 1rem;
   border-bottom: 1px solid var(--rule);
   font-size: 0.9rem;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
 }
 .topbar .muted { color: var(--muted); }
 .topbar .legend { margin-left: auto; display: flex; gap: 0.4rem; }
@@ -240,6 +244,30 @@ body {
 .thread-orphan { color: var(--del-fg); }
 .muted { color: var(--muted); }
 
+/* --- individual comments (collapsible) --- */
+.comment { border-top: 1px solid var(--rule); padding: 0.3rem 0; }
+.comment:first-child { border-top: none; }
+.comment-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  cursor: pointer;
+  user-select: none;
+}
+.comment-caret { color: var(--muted); font-size: 0.6rem; width: 0.7rem; flex: none; }
+.comment-meta { font-weight: 600; font-size: 0.72rem; color: var(--muted); flex: none; }
+.comment-preview {
+  color: var(--muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Expanded: show the body, drop the redundant preview. */
+.comment:not(.collapsed) .comment-preview { display: none; }
+.comment.collapsed .comment-body-host { display: none; }
+.comment-body-host { margin-left: 1rem; }
+
 /* --- buttons --- */
 .btn {
   font: inherit;
@@ -297,3 +325,6 @@ body {
 }
 .change-insert .change-label { color: var(--ins-fg); }
 .change-delete .change-label { color: var(--del-fg); text-decoration: line-through; }
+/* replace: old (struck, red) → new (green) */
+.change-del-text { color: var(--del-fg); text-decoration: line-through; }
+.change-ins-text { color: var(--ins-fg); }

@@ -128,6 +128,17 @@ export function stripAnchors(markdown: string): string {
 const ID_RE = /^t(\d+)$/;
 
 /**
+ * The stable display number for a thread — the numeric part of its id (`t3` → 3).
+ * Used identically by the in-text badge and the sidebar card so they always
+ * agree, and because it derives from the id it never shifts when another thread is
+ * added or removed (unlike a positional 1..N counter). Non-`t<N>` ids fall back to
+ * the id itself.
+ */
+export function threadNumber(id: string): string {
+  return ID_RE.exec(id)?.[1] ?? id;
+}
+
+/**
  * Next sequential id of the form `t<N>` given the ids already in use: max numeric
  * suffix + 1, or `t1` if none qualify. The caller passes every id already in play
  * — both store thread ids AND anchor ids in the document — so a freshly applied
