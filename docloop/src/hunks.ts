@@ -31,13 +31,43 @@ type Item =
   | { change: false; value: string }
   | { change: true; index: number; oldValue: string; newValue: string };
 
-/** Walk the word-diff, coalescing each contiguous run of changes into one item. */
+/**
+ * Semantic-cleanup threshold (issue #53): a retained gap of at most this many
+ * words sitting BETWEEN two changes is absorbed into a single replace, so a
+ * rewritten sentence reads as one delete-old/insert-new rather than a scatter of
+ * tiny word edits. Higher = coarser grouping. (Alternatives — sentence-level diff,
+ * diff-match-patch cleanupSemantic — are parked on the issue.)
+ */
+const BRIDGE_WORDS = 3;
+
+/** Word count of a span (whitespace-only → 0). */
+function wordCount(s: string): number {
+  const t = s.trim();
+  return t ? t.split(/\s+/).length : 0;
+}
+
+/**
+ * Walk the word-diff, coalescing each contiguous run of changes into one item —
+ * AND bridging short retained gaps (≤ {@link BRIDGE_WORDS}) between changes into
+ * the same run (added to both sides, since the text is retained). The inline
+ * decorations stay fine-grained; only the accept/reject *unit* is coarsened.
+ */
 function groupedDiff(oldMd: string, newMd: string): Item[] {
+  const segs = computeDiff(oldMd, newMd);
   const items: Item[] = [];
   let k = -1;
   let cur: Extract<Item, { change: true }> | null = null;
-  for (const seg of computeDiff(oldMd, newMd)) {
+  for (let i = 0; i < segs.length; i++) {
+    const seg = segs[i];
     if (seg.type === 'equal') {
+      const next = segs[i + 1];
+      // Bridge: mid-change, this gap is short, and another change follows → keep
+      // the run open, absorbing the retained gap into both sides.
+      if (cur && next && next.type !== 'equal' && wordCount(seg.value) <= BRIDGE_WORDS) {
+        cur.oldValue += seg.value;
+        cur.newValue += seg.value;
+        continue;
+      }
       if (cur) { items.push(cur); cur = null; }
       items.push({ change: false, value: seg.value });
     } else {

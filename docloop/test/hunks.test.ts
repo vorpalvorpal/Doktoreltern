@@ -20,26 +20,41 @@ describe('listContentHunks (grouped)', () => {
     expect(hs[0].newValue).toContain('brown');
     expect(hs[1].oldValue).toContain('lazy');
   });
+
+  it('bridges a SHORT retained gap into one replace (semantic cleanup)', () => {
+    // "sat on the" (3 words) is retained between cat→dog and mat→rug → one replace.
+    const hs = listContentHunks('the cat sat on the mat', 'the dog sat on the rug');
+    expect(hs).toEqual([
+      { index: 0, type: 'replace', oldValue: 'cat sat on the mat', newValue: 'dog sat on the rug' },
+    ]);
+  });
+
+  it('does NOT bridge a LONG retained gap', () => {
+    // "sat quietly over by the old" (6 words) > threshold → two separate replaces.
+    const hs = listContentHunks('the cat sat quietly over by the old mat', 'the dog sat quietly over by the old rug');
+    expect(hs.map((h) => h.type)).toEqual(['replace', 'replace']);
+  });
 });
 
 describe('accept', () => {
   it('accepting a replace bakes the new text in — and it does NOT come back', () => {
     // Regression for the re-approval bug: accepting one side of a replace used to
     // merge old+new in the baseline ("catdog") and resurface as a phantom change.
-    const base = 'the cat sat on the mat';
-    const live = 'the dog sat on the rug'; // two replaces
+    // Long gap so the two replaces stay separate (see bridging test above).
+    const base = 'the cat sat quietly over by the old mat';
+    const live = 'the dog sat quietly over by the old rug';
     const hunks = listContentHunks(base, live);
     expect(hunks.map((h) => h.type)).toEqual(['replace', 'replace']);
 
     const nb = acceptHunk(base, live, 0); // accept cat→dog
-    expect(nb).toBe('the dog sat on the mat'); // clean baseline, no "catdog"
+    expect(nb).toBe('the dog sat quietly over by the old mat'); // clean, no "catdog"
     const after = listContentHunks(nb, live);
     expect(after).toEqual([{ index: 0, type: 'replace', oldValue: 'mat', newValue: 'rug' }]);
   });
 
   it('accepting every hunk makes the diff empty', () => {
-    const base = 'the cat sat on the mat';
-    const live = 'the dog sat on the rug';
+    const base = 'the cat sat quietly over by the old mat';
+    const live = 'the dog sat quietly over by the old rug';
     let b = acceptHunk(base, live, 0);
     const rest = listContentHunks(b, live);
     b = acceptHunk(b, live, rest[0].index);
