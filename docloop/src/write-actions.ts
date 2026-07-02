@@ -50,6 +50,17 @@ export function selectionOverlapsAnchor(ed: DocloopEditor): boolean {
 }
 
 /**
+ * Is the editor's document empty (no visible text)? The Milkdown-instance
+ * equivalent of `input.value.trim() === ''` for the old plain-textarea
+ * compose box — used to decide whether a blurred compose box should be
+ * treated as "nothing written" (abandon / just deactivate) or "has content"
+ * (save it).
+ */
+export function isDocEmpty(ed: DocloopEditor): boolean {
+  return ed.view.state.doc.textContent.trim() === '';
+}
+
+/**
  * Apply the comment anchor (`threadId` = `id`) to the current selection, marking
  * the span in PM space. Returns false (a no-op) if there's no selection to wrap.
  * The store thread is created lazily on the first reply, so this is all the

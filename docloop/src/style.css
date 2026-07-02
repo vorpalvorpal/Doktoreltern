@@ -297,23 +297,27 @@ body {
 .btn-accept { border-color: var(--ins-fg); color: var(--ins-fg); }
 .btn-reject { border-color: var(--del-fg); color: var(--del-fg); }
 
-/* --- reply box --- */
-.reply-form { display: flex; gap: 0.35rem; align-items: flex-end; }
-.reply-input {
-  flex: 1;
-  font: inherit;
-  font-size: 0.8rem;
-  padding: 0.2rem 0.4rem;
-  border: 1px solid var(--rule);
+/* --- compose slot: the one live editable Milkdown instance, or a
+   placeholder that activates it on click (see main.ts mountCompose) --- */
+.compose-host { font-size: 0.8rem; }
+.reply-placeholder {
+  padding: 0.25rem 0.4rem;
+  border: 1px dashed var(--rule);
   border-radius: 6px;
-  background: var(--panel);
-  color: var(--fg);
-  /* grows with content (main.ts sets height = scrollHeight on input) rather than
-     scrolling a fixed single line */
-  resize: none;
-  overflow: hidden;
-  min-height: 1.6em;
+  cursor: text;
 }
+.reply-placeholder:hover { border-color: var(--accent); }
+/* The live compose editor: a real (editable) Milkdown instance mounted
+   directly into .compose-host — height grows with content naturally, no
+   manual sizing needed. */
+.compose-host .milkdown {
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 0.25rem 0.4rem;
+  background: var(--panel);
+}
+.compose-host .milkdown :first-child { margin-top: 0; }
+.compose-host .milkdown :last-child { margin-bottom: 0; }
 
 /* --- change-approval cards (in the margin gutter, beside the change) --- */
 .change-card {

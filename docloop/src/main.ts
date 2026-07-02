@@ -9,11 +9,15 @@
  *     inserts, red delete widgets) + the comment-anchor highlights — re-derived
  *     after every action,
  *   - a threads sidebar: each document anchor joined with its store comments
- *     (rendered via a read-only Milkdown instance), a reply box, and a Resolve
- *     control,
+ *     (rendered via a read-only Milkdown instance), a compose box, and a
+ *     Resolve control,
  *   - highlighting a span auto-anchors a new thread on it (no "Add comment"
- *     button): the reply box opens focused, and abandoning it empty (blur with
- *     no text, or starting a new highlight elsewhere) drops the anchor again,
+ *     button) and activates its compose box — a single live, editable
+ *     Milkdown instance shared app-wide (every other thread's slot is a cheap
+ *     placeholder). There's no submit button: blurring the box amends the
+ *     draft comment in place (or creates it, or abandons the anchor if left
+ *     empty with nothing else behind it) until Save-draft/Commit seals it —
+ *     see {@link deactivateCompose} / {@link sealDrafts},
  *   - a "Changes" panel listing each diff hunk with Accept / Reject controls.
  *
  * Document mutations go through the M0 serialise→transform→reload path; comment
@@ -32,12 +36,15 @@ import {
   loadMarkdown,
   hasTextSelection,
   selectionOverlapsAnchor,
+  isDocEmpty,
 } from './write-actions';
 import {
   fetchThreads,
   replyThread,
+  updateComment,
   resolveThread,
   type StoreThread,
+  type StoreComment,
 } from './threads-client';
 import { listChanges, rejectChange, type Change } from './changes';
 import { OLD_MD, NEW_MD, SAMPLE_THREADS } from './sample';
@@ -66,14 +73,25 @@ interface App {
   els: {
     threads: HTMLElement;
   };
-  /** thread id whose reply box should grab focus after the next render */
-  focusReplyFor: string | null;
   /**
-   * The thread id most recently auto-anchored from a highlight but not yet
-   * confirmed with a first reply (see {@link autoAnchorFromSelection}). It has no
-   * store entry yet — if its box is abandoned empty, the anchor is dropped again.
+   * Which thread (if any) owns the one live, editable compose instance —
+   * only one exists app-wide at a time; every other thread's compose slot is
+   * a cheap placeholder. Set by highlighting a new span, clicking a
+   * placeholder, or the badge-click focus path; cleared on blur.
    */
-  pendingThreadId: string | null;
+  composeThreadId: string | null;
+  /** The live editable compose instance for `composeThreadId`, if any — torn down on every rerender (see renderNow), tracked separately from the read-only `commentEditors`. */
+  composeEditor: DocloopEditor | null;
+  /**
+   * Thread id → comment seq that's still amendable *this browser session*.
+   * Blurring the compose box with content amends this seq in place (rather
+   * than stacking a new comment) until Save-draft/Commit seals it (clearing
+   * this map). No entry yet = nothing saved for this thread this session
+   * (a freshly auto-anchored thread starts here — folds the old
+   * `pendingThreadId` concept into this same map, since "pending" was always
+   * just "no draft yet").
+   */
+  draftSeq: Map<string, number>;
 }
 
 /**
@@ -160,8 +178,9 @@ async function main(): Promise<void> {
     acceptedChanges: new Set(),
     collapseInitialized: false,
     els: { threads: threadList },
-    focusReplyFor: null,
-    pendingThreadId: null,
+    composeThreadId: null,
+    composeEditor: null,
+    draftSeq: new Map(),
   };
 
   // Highlighting a span auto-anchors a new thread on it (see autoAnchorFromSelection).
@@ -216,19 +235,20 @@ async function main(): Promise<void> {
 }
 
 /**
- * Auto-anchor a new thread on the current selection (replaces an explicit "Add
- * comment" button): any highlight becomes a thread, its reply box opening
- * focused. Guards against re-anchoring text that's already commented, and
- * against firing repeatedly for the same settled selection (mouseup fires once
- * per drag, but keyup can re-fire while extending a selection with the
- * keyboard — {@link selectionOverlapsAnchor} short-circuits once this exact span
- * is already wrapped by the anchor we just applied).
+ * Auto-anchor a new thread on the current selection and activate its compose
+ * box (replaces an explicit "Add comment" button). Guards against
+ * re-anchoring text that's already commented, and against firing repeatedly
+ * for the same settled selection (mouseup fires once per drag, but keyup can
+ * re-fire while extending a selection with the keyboard —
+ * {@link selectionOverlapsAnchor} short-circuits once this exact span is
+ * already wrapped by the anchor we just applied).
  *
- * A previously pending (unconfirmed — no reply yet) thread is abandoned the
- * moment a *different* highlight starts: its anchor is removed only AFTER the
- * new one is safely applied, because removal round-trips through
- * serialise→reload (see {@link removeAnchor}) which would otherwise reset the
- * live selection before it could be anchored.
+ * No "previous compose thread" cleanup is needed here, unlike the old
+ * pendingThreadId design: starting a new highlight in the main document
+ * necessarily blurs whatever compose box was focused first (ordinary browser
+ * focus semantics), and blur is exactly what {@link deactivateCompose}
+ * listens for — by the time this runs, any prior compose thread has already
+ * settled (abandoned if empty, saved otherwise).
  */
 function autoAnchorFromSelection(app: App): void {
   if (!hasTextSelection(app.ed)) return;
@@ -243,38 +263,66 @@ function autoAnchorFromSelection(app: App): void {
   const id = nextThreadId(inUse);
   if (!applyAnchor(app.ed, id)) return; // no selection after all (race) — no-op
 
-  const previousPending = app.pendingThreadId;
-  app.pendingThreadId = id;
+  app.composeThreadId = id;
   app.expanded.add(id); // a thread you just opened starts expanded
-  app.focusReplyFor = id; // focus its reply box once the sidebar re-renders
-  if (previousPending && previousPending !== id) {
-    app.expanded.delete(previousPending);
-    removeAnchor(app.ed, previousPending);
-  }
   void rerender(app);
 }
 
 /**
- * Drop a pending (unconfirmed) thread's anchor entirely — its box was abandoned
- * empty, or it's being superseded by a commit/save that must not persist a
- * comment-less highlight. Does not touch the store: a pending thread never had
- * an entry there (created lazily on the first reply).
+ * Deactivate the current compose thread (if any): read its live content,
+ * decide what that means, and settle it before clearing `composeThreadId`.
+ *   - empty + no draft yet + no other (older) comments → abandon: drop the
+ *     anchor entirely (today's "abandon empty" rule, re-keyed off `draftSeq`
+ *     instead of the old `pendingThreadId`).
+ *   - empty otherwise → just deactivate, nothing to save.
+ *   - non-empty → upsert (amend the tracked draft seq if one exists, else
+ *     create a new comment and start tracking its seq).
+ * Called on blur, and proactively before Commit/Save-draft (which then also
+ * clears `draftSeq` — see {@link sealDrafts}). `composeThreadId` is cleared
+ * up front so a second call (e.g. Commit right after a natural blur) is a
+ * fast no-op rather than double-handling the same thread; the accepted
+ * tradeoff is that such a second call doesn't *wait* for an already-in-flight
+ * upsert from the first — low stakes, since `draftSeq` is a browser-session
+ * bookkeeping map, not the source of truth (the store write itself isn't
+ * affected either way).
  */
-function dropPendingThread(app: App, id: string): void {
-  app.expanded.delete(id);
-  if (app.pendingThreadId === id) app.pendingThreadId = null;
-  removeAnchor(app.ed, id);
+async function deactivateCompose(app: App): Promise<void> {
+  const id = app.composeThreadId;
+  if (!id) return;
+  const ed = app.composeEditor;
+  app.composeThreadId = null;
+  if (!ed) return;
+
+  const hasDraft = app.draftSeq.has(id);
+  const hasHistory = (app.threads.find((t) => t.id === id)?.comments.length ?? 0) > 0;
+
+  if (isDocEmpty(ed)) {
+    if (!hasDraft && !hasHistory) {
+      app.expanded.delete(id);
+      removeAnchor(app.ed, id);
+    }
+  } else {
+    const body = currentMarkdown(ed);
+    const seq = await upsertDraft(app, id, body, hasDraft ? (app.draftSeq.get(id) ?? null) : null);
+    app.draftSeq.set(id, seq);
+  }
+  await rerender(app);
 }
 
 /**
- * Settle any still-pending thread before the doc is serialised for hand-off
- * (commit or save-draft) — an anchor with no comment behind it must never be
- * persisted to disk.
+ * Settle whatever's currently being composed, then seal every draft this
+ * session — whatever was mid-flight is now committed history; the next edit
+ * to any of those threads starts a fresh comment rather than continuing to
+ * amend now-sealed ones. Called before the doc is serialised for hand-off
+ * (Commit / Save-draft).
  */
-async function settlePending(app: App): Promise<void> {
-  const id = app.pendingThreadId;
-  if (!id) return;
-  dropPendingThread(app, id);
+async function sealDrafts(app: App): Promise<void> {
+  await deactivateCompose(app); // settles whatever's currently focused (and rerenders, if so)
+  app.draftSeq.clear();
+  // Unconditional rerender: deactivateCompose already re-rendered if it had
+  // something to settle, but clearing draftSeq needs to be reflected in the
+  // sidebar too (placeholders flip from "Continue editing…" back to
+  // "Reply…") even when nothing was actively focused at the time.
   await rerender(app);
 }
 
@@ -289,7 +337,7 @@ function wireCommit(app: App, btn: HTMLButtonElement): void {
     btn.disabled = true;
     btn.textContent = 'Committing…';
     try {
-      await settlePending(app);
+      await sealDrafts(app);
       const res = await fetch('/commit', { method: 'POST', body: currentMarkdown(app.ed) });
       const json = (await res.json()) as { ok: boolean; committed?: boolean; commit?: string };
       btn.textContent = !json.ok
@@ -321,7 +369,7 @@ function wireSaveDraft(app: App, btn: HTMLButtonElement): void {
     btn.disabled = true;
     btn.textContent = 'Saving…';
     try {
-      await settlePending(app);
+      await sealDrafts(app);
       const res = await fetch('/save-draft', { method: 'POST', body: currentMarkdown(app.ed) });
       const json = (await res.json()) as { ok: boolean };
       btn.textContent = json.ok ? 'Saved' : 'Save failed';
@@ -336,24 +384,42 @@ function wireSaveDraft(app: App, btn: HTMLButtonElement): void {
   });
 }
 
-/** Append a comment to a thread, via the store or (offline) in-memory. */
-async function postReply(app: App, id: string, body: string): Promise<void> {
+/**
+ * Create or amend a thread's draft comment (the compose box's blur-driven
+ * upsert), via the store or (offline) in-memory. `existingSeq` amends that
+ * seq in place; `null` creates a new comment. Returns the resulting seq, for
+ * the caller to start (or keep) tracking in `app.draftSeq`.
+ */
+async function upsertDraft(
+  app: App,
+  id: string,
+  body: string,
+  existingSeq: number | null,
+): Promise<number> {
   if (app.usingStore) {
-    await replyThread(id, body);
+    if (existingSeq != null) {
+      await updateComment(id, existingSeq, body);
+      app.threads = await fetchThreads();
+      return existingSeq;
+    }
+    const comment = await replyThread(id, body);
     app.threads = await fetchThreads();
-    return;
+    return comment.seq;
   }
   // Offline demo: mutate the cached store so the sidebar still updates.
-  const now = new Date().toISOString();
-  const existing = app.threads.find((t) => t.id === id);
-  if (existing) {
-    const seq = existing.comments.length
-      ? existing.comments[existing.comments.length - 1].seq + 1
-      : 1;
-    existing.comments.push({ seq, author: 'rjs', created: now, body });
-  } else {
-    app.threads.push({ id, comments: [{ seq: 1, author: 'rjs', created: now, body }] });
+  let thread = app.threads.find((t) => t.id === id);
+  if (!thread) {
+    thread = { id, comments: [] };
+    app.threads.push(thread);
   }
+  if (existingSeq != null) {
+    const existing = thread.comments.find((c) => c.seq === existingSeq);
+    if (existing) existing.body = body;
+    return existingSeq;
+  }
+  const seq = thread.comments.length ? thread.comments[thread.comments.length - 1].seq + 1 : 1;
+  thread.comments.push({ seq, author: 'rjs', created: new Date().toISOString(), body });
+  return seq;
 }
 
 /** Resolve a thread: drop its store directory, via the store or (offline) in-memory. */
@@ -372,7 +438,7 @@ async function deleteThread(app: App, id: string): Promise<void> {
  * `void`-style ("fire and forget") from most call sites (a highlight, a
  * click), and its body awaits several async steps (tearing down comment
  * editors, awaiting new ones) while mutating SHARED state
- * (`app.commentEditors`, `app.els.threads`'s DOM, `app.focusReplyFor`) — two
+ * (`app.commentEditors`, `app.composeEditor`, `app.els.threads`'s DOM) — two
  * calls started close together used to run concurrently, and whichever
  * finished last would clobber whatever the other had just built (two rapid
  * highlights — a second thread created before the first's rerender had
@@ -405,10 +471,19 @@ async function renderNow(app: App): Promise<void> {
   const set = buildReadViewDecorations(baselineDoc, liveDoc, acceptedRanges);
   ed.view.dispatch(ed.view.state.tr.setMeta(decoPluginKey, set));
 
-  // 2. Rebuild the gutter: tear down old comment editors, then thread cards +
-  // change cards (the still-pending changes).
+  // 2. Rebuild the gutter: tear down old comment + compose editors, then
+  // thread cards + change cards (the still-pending changes). The compose
+  // editor is always torn down here too (never preserved across a rerender)
+  // — safe because any action that could trigger a rerender necessarily blurs
+  // it first (ordinary focus semantics), which has already settled it via
+  // deactivateCompose by the time this runs; renderThreads recreates it fresh
+  // if `composeThreadId` is (still, or newly) set.
   await Promise.all(app.commentEditors.map((e) => e.destroy()));
   app.commentEditors = [];
+  if (app.composeEditor) {
+    await app.composeEditor.destroy();
+    app.composeEditor = null;
+  }
   app.els.threads.replaceChildren();
   await renderThreads(app, extractAnchors(currentMarkdown(ed)));
   renderChangeCards(app, changes.filter((c) => !app.acceptedChanges.has(c.key)));
@@ -512,14 +587,14 @@ function initCollapse(app: App, anchors: Anchor[]): void {
 
 /**
  * Focus a thread from an in-text badge click: open the thread, unfold its most
- * recent comment (the one you'd be replying to), focus the reply box, and scroll
- * the card into view.
+ * recent comment (the one you'd be replying to), activate its compose box,
+ * and scroll the card into view.
  */
 async function focusThread(app: App, id: string): Promise<void> {
   app.expanded.add(id);
   const comments = app.threads.find((t) => t.id === id)?.comments ?? [];
   if (comments.length) app.expandedComments.add(`${id}#${comments[comments.length - 1].seq}`);
-  app.focusReplyFor = id;
+  app.composeThreadId = id;
   await rerender(app);
   app.els.threads
     .querySelector(`.thread[data-thread="${id}"]`)
@@ -536,8 +611,9 @@ async function renderComment(app: App, host: HTMLElement, body: string): Promise
 }
 
 /**
- * Render the threads sidebar: each document anchor, its store comments (read-only
- * Milkdown), a reply box, and a Resolve button.
+ * Render the threads sidebar: each document anchor, its store comments
+ * (read-only Milkdown), a compose slot (the live editor if this thread is
+ * active, else a placeholder), and a Resolve button.
  */
 async function renderThreads(app: App, anchors: Anchor[]): Promise<void> {
   // The gutter is cleared and comment editors torn down by the caller (rerender).
@@ -588,7 +664,8 @@ async function renderThreads(app: App, anchors: Anchor[]): Promise<void> {
     resolveBtn.title = 'Unwrap the anchor and delete this thread';
     resolveBtn.addEventListener('click', async (e) => {
       e.stopPropagation(); // don't also toggle collapse
-      if (app.pendingThreadId === a.id) app.pendingThreadId = null; // no longer pending
+      if (app.composeThreadId === a.id) app.composeThreadId = null;
+      app.draftSeq.delete(a.id);
       removeAnchor(app.ed, a.id); // document side
       await deleteThread(app, a.id); // store side
       await rerender(app);
@@ -657,67 +734,63 @@ async function renderThreads(app: App, anchors: Anchor[]): Promise<void> {
       }
     }
 
-    // Reply / initial-comment box: an auto-growing textarea (rows grow with the
-    // comment rather than scrolling a single line). Enter submits; Shift+Enter
-    // inserts a newline.
-    const form = document.createElement('form');
-    form.className = 'reply-form';
-    const input = document.createElement('textarea');
-    input.rows = 1;
-    input.placeholder = 'Reply…';
-    input.className = 'reply-input';
-    form.appendChild(input);
-    const send = document.createElement('button');
-    send.type = 'submit';
-    send.className = 'btn';
-    send.textContent = 'Reply';
-    form.appendChild(send);
+    // Compose slot: at most one live editable Milkdown instance exists
+    // app-wide at a time (whichever thread is being composed — see
+    // deactivateCompose). Every other thread's slot is a cheap placeholder
+    // that activates the live editor on click.
+    const composeHost = document.createElement('div');
+    composeHost.className = 'compose-host';
+    li.appendChild(composeHost);
 
-    const autoGrow = () => {
-      input.style.height = 'auto';
-      input.style.height = `${input.scrollHeight}px`;
-    };
-    input.addEventListener('input', () => {
-      autoGrow();
-      scheduleLayout(app); // height changed → restack the gutter
-    });
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        form.requestSubmit();
-      }
-    });
-    // A freshly auto-anchored thread (from highlighting) has no store entry yet
-    // — abandoning its box empty must drop the anchor, not leave a dangling
-    // highlight with nothing behind it.
-    input.addEventListener('blur', () => {
-      if (app.pendingThreadId === a.id && input.value.trim() === '') {
-        dropPendingThread(app, a.id);
-        void rerender(app);
-      }
-    });
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const text = input.value.trim();
-      if (!text) return;
-      if (app.pendingThreadId === a.id) app.pendingThreadId = null; // confirmed
-      app.expanded.add(a.id); // keep it open across the re-render
-      app.focusReplyFor = a.id;
-      await postReply(app, a.id, text);
-      await rerender(app);
-    });
-    li.appendChild(form);
-
+    // Attach to the live DOM BEFORE mounting/focusing the compose editor —
+    // a detached element can't receive focus.
     host.appendChild(li);
 
-    if (app.focusReplyFor === a.id) {
-      input.focus();
-      autoGrow();
+    if (app.composeThreadId === a.id) {
+      await mountCompose(app, composeHost, a.id, comments);
+    } else {
+      const placeholder = document.createElement('div');
+      placeholder.className = 'reply-placeholder muted';
+      placeholder.title = 'Click to reply';
+      placeholder.textContent = app.draftSeq.has(a.id) ? 'Continue editing…' : 'Reply…';
+      placeholder.addEventListener('click', () => {
+        app.composeThreadId = a.id;
+        void rerender(app);
+      });
+      composeHost.appendChild(placeholder);
     }
   }
+}
 
-  app.focusReplyFor = null;
+/**
+ * Mount the one live editable compose instance for thread `id` into `host`,
+ * seeded with its current draft body if one exists (see `app.draftSeq`).
+ * Guards the async creation gap: if `composeThreadId` moved on to a
+ * different thread while this was awaiting (its own blur, or another
+ * thread's placeholder was clicked), the just-created instance is discarded
+ * rather than mounted.
+ */
+async function mountCompose(
+  app: App,
+  host: HTMLElement,
+  id: string,
+  comments: StoreComment[],
+): Promise<void> {
+  const draftSeq = app.draftSeq.get(id);
+  const seed = draftSeq != null ? (comments.find((c) => c.seq === draftSeq)?.body ?? '') : '';
+  const ed = await createEditor(host, seed, { editable: true });
+  if (app.composeThreadId !== id) {
+    await ed.destroy();
+    return;
+  }
+  app.composeEditor = ed;
+  ed.view.dom.addEventListener('blur', () => {
+    void deactivateCompose(app);
+  });
+  ed.view.dom.addEventListener('input', () => {
+    scheduleLayout(app); // height changed as the user types → restack the gutter
+  });
+  ed.view.focus();
 }
 
 /**
