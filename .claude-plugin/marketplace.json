@@ -39,6 +39,15 @@
         { "name": "shiny", "marketplace": "posit-dev-skills" },
         { "name": "quarto", "marketplace": "posit-dev-skills" }
       ]
+    },
+    {
+      "name": "docloop",
+      "description": "Skills invoked live from inside a docloop review comment (a slash command typed while composing, resolved synchronously via the Claude Agent SDK — see docloop/skills/README.md). Narrow, self-contained, text-in/text-out only — no filesystem/Bash access, no mode changes.",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./docloop/skills/example"
+      ]
     }
   ]
 }

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repository Is
 
-This repository implements **Doktoreltern** — a risk-first methodology for solo and small-scale technical projects (see `README.md` for the vision), delivered as a Claude Code marketplace (`doktoreltern`) of specialist *advisor* plugins. It currently contains one advisor plugin, **`r-science`**: the science-centered R package development workflow spine and its supporting skills. Skills are structured markdown files that teach Claude specialized workflows; the primary skill artifacts are Markdown files consumed directly by Claude's skill system. There is also a Python **context substrate** under `r-science/context/` (the marker grammar, fold/linter, fetch adapter, and MCP server) with its own pytest suite — that is the one part of the repo with runnable, testable code.
+This repository implements **Doktoreltern** — a risk-first methodology for solo and small-scale technical projects (see `README.md` for the vision), delivered as a Claude Code marketplace (`doktoreltern`) of specialist *advisor* plugins. It currently contains two plugins: **`r-science`**, the science-centered R package development workflow spine and its supporting skills, and **`docloop`**, a small roster of narrow skills invoked live from inside a docloop review comment (see `docloop/skills/README.md`). Skills are structured markdown files that teach Claude specialized workflows; the primary skill artifacts are Markdown files consumed directly by Claude's skill system. There is also a Python **context substrate** under `r-science/context/` (the marker grammar, fold/linter, fetch adapter, and MCP server) with its own pytest suite — that is the one part of the repo with runnable, testable code.
 
 The general-purpose R, GitHub, and publishing skills the workflow builds on are **not** in this repository: they live in the upstream [Posit Claude Skills](https://github.com/posit-dev/skills) marketplace (`posit-dev-skills`) and are pulled in as plugin **dependencies** declared in `.claude-plugin/marketplace.json`. This repository was previously a fork of that one; it no longer is.
 
@@ -53,7 +53,7 @@ The body is instructions written **for Claude**, not end users — imperative, s
 
 ## Registering a New Skill
 
-There is a single plugin, `r-science`. After creating the skill directory under `r-science/`, add its path to that plugin's `skills` array in `.claude-plugin/marketplace.json`:
+There are two plugins, `r-science` and `docloop`. After creating the skill directory under the matching plugin's own directory (`r-science/` or `docloop/skills/`), add its path to that plugin's `skills` array in `.claude-plugin/marketplace.json`:
 
 ```json
 {
@@ -69,9 +69,13 @@ The `source` field is always `"./"` (repo root). When the new skill is part of t
 
 To rely on a skill from the upstream Posit marketplace, do **not** copy it here — add its plugin to the `dependencies` array of the `r-science` plugin (with `"marketplace": "posit-dev-skills"`), and ensure that marketplace name is present in the top-level `allowCrossMarketplaceDependenciesOn` allowlist.
 
+`docloop` skills follow a different rule, since they're invoked live and unattended (no filesystem/Bash access, no interactive human to approve anything) rather than by Claude's own judgement mid-conversation — read `docloop/skills/README.md` before adding one; it is not a normal `r-science`-style skill.
+
 ## Skills
 
-All skills live under `r-science/` and belong to the single `r-science` plugin: the workflow spine (`conventions`, `whiteboard`, `plan`, `tests`, `implement`, `verify`, `benchmark-optimise`, `review`) plus `r-oop` and `r-bayes`. General developer, GitHub, r-lib, `open-source`, `ggsql`, `shiny`, and `quarto` skills are upstream dependencies, not part of this repository — see [What This Repository Is](#what-this-repository-is).
+`r-science/` holds the single `r-science` plugin's skills: the workflow spine (`conventions`, `whiteboard`, `plan`, `tests`, `implement`, `verify`, `benchmark-optimise`, `review`) plus `r-oop` and `r-bayes`. General developer, GitHub, r-lib, `open-source`, `ggsql`, `shiny`, and `quarto` skills are upstream dependencies, not part of this repository — see [What This Repository Is](#what-this-repository-is).
+
+`docloop/skills/` holds the `docloop` plugin's skills — a narrow, purpose-built roster invoked live from inside a docloop review comment, not general-purpose workflow skills. See `docloop/skills/README.md` for the house rules (quick, text-in/text-out only, no mode changes) before adding to it.
 
 ## Dogfooding
 
