@@ -39,6 +39,17 @@ export function hasTextSelection(ed: DocloopEditor): boolean {
 }
 
 /**
+ * Does the current selection overlap an existing comment anchor? Highlighting
+ * auto-creates a new thread (see main.ts), and this guards against wrapping a
+ * second anchor over text that's already commented.
+ */
+export function selectionOverlapsAnchor(ed: DocloopEditor): boolean {
+  const { from, to } = ed.view.state.selection;
+  const markType = commentAnchorMark.type(ed.editor.ctx);
+  return ed.view.state.doc.rangeHasMark(from, to, markType);
+}
+
+/**
  * Apply the comment anchor (`threadId` = `id`) to the current selection, marking
  * the span in PM space. Returns false (a no-op) if there's no selection to wrap.
  * The store thread is created lazily on the first reply, so this is all the

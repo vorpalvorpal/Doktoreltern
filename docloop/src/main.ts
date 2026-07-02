@@ -11,7 +11,9 @@
  *   - a threads sidebar: each document anchor joined with its store comments
  *     (rendered via a read-only Milkdown instance), a reply box, and a Resolve
  *     control,
- *   - an "Add comment" button that anchors a comment on the current selection,
+ *   - highlighting a span auto-anchors a new thread on it (no "Add comment"
+ *     button): the reply box opens focused, and abandoning it empty (blur with
+ *     no text, or starting a new highlight elsewhere) drops the anchor again,
  *   - a "Changes" panel listing each diff hunk with Accept / Reject controls.
  *
  * Document mutations go through the M0 serialise→transform→reload path; comment
@@ -29,6 +31,7 @@ import {
   currentMarkdown,
   loadMarkdown,
   hasTextSelection,
+  selectionOverlapsAnchor,
 } from './write-actions';
 import {
   fetchThreads,
@@ -38,6 +41,7 @@ import {
 } from './threads-client';
 import { listChanges, rejectChange, type Change } from './changes';
 import { OLD_MD, NEW_MD, SAMPLE_THREADS } from './sample';
+import { createSerialQueue } from './serial-queue';
 
 /** Mutable app state: the editor, the diff baseline, and the cached store. */
 interface App {
@@ -61,17 +65,31 @@ interface App {
   collapseInitialized: boolean;
   els: {
     threads: HTMLElement;
-    addBtn: HTMLButtonElement;
   };
   /** thread id whose reply box should grab focus after the next render */
   focusReplyFor: string | null;
+  /**
+   * The thread id most recently auto-anchored from a highlight but not yet
+   * confirmed with a first reply (see {@link autoAnchorFromSelection}). It has no
+   * store entry yet — if its box is abandoned empty, the anchor is dropped again.
+   */
+  pendingThreadId: string | null;
 }
 
 /**
  * Load the document + diff baseline. Prefers the live git workspace via `GET
- * /doc`; falls back to the bundled sample when no workspace exists yet.
+ * /doc`; falls back to the bundled sample when no workspace exists yet (no
+ * dev server reachable, or `/doc` reports nothing present). `isSample` tells
+ * the caller which happened, so a fallback can be shown clearly rather than
+ * silently looking like the real document — a stale dev-server process is a
+ * common cause (Vite doesn't hot-reload `vite.config.ts` plugin edits).
  */
-async function loadState(): Promise<{ current: string; baseline: string; baselineIso: string | null }> {
+async function loadState(): Promise<{
+  current: string;
+  baseline: string;
+  baselineIso: string | null;
+  isSample: boolean;
+}> {
   try {
     const res = await fetch('/doc');
     const json = (await res.json()) as {
@@ -87,12 +105,18 @@ async function loadState(): Promise<{ current: string; baseline: string; baselin
         current: json.current,
         baseline: json.baseline ?? json.current,
         baselineIso: json.baselineIso ?? null,
+        isSample: false,
       };
     }
   } catch {
     // No dev server / endpoint — fall through to the sample.
   }
-  return { current: NEW_MD, baseline: OLD_MD, baselineIso: null };
+  return { current: NEW_MD, baseline: OLD_MD, baselineIso: null, isSample: true };
+}
+
+/** Show/hide the "showing the bundled sample" banner (see index.html). */
+function setSampleBannerVisible(visible: boolean): void {
+  document.getElementById('sample-banner')?.toggleAttribute('hidden', !visible);
 }
 
 /**
@@ -111,13 +135,13 @@ async function loadThreads(): Promise<{ threads: StoreThread[]; usingStore: bool
 async function main(): Promise<void> {
   const editorRoot = document.getElementById('editor');
   const threadList = document.getElementById('threads');
-  const addBtn = document.getElementById('add-comment') as HTMLButtonElement | null;
-  if (!editorRoot || !threadList || !addBtn) {
-    throw new Error('missing #editor / #threads / #add-comment');
+  if (!editorRoot || !threadList) {
+    throw new Error('missing #editor / #threads');
   }
 
-  const { current, baseline, baselineIso } = await loadState();
+  const { current, baseline, baselineIso, isSample } = await loadState();
   const { threads, usingStore } = await loadThreads();
+  setSampleBannerVisible(isSample);
 
   const ed = await createEditor(editorRoot, current, {
     editable: true,
@@ -135,34 +159,20 @@ async function main(): Promise<void> {
     expandedComments: new Set(),
     acceptedChanges: new Set(),
     collapseInitialized: false,
-    els: { threads: threadList, addBtn },
+    els: { threads: threadList },
     focusReplyFor: null,
+    pendingThreadId: null,
   };
 
-  // "Add comment" is enabled only when there's a span to anchor on.
-  const syncAddBtn = () => {
-    addBtn.disabled = !hasTextSelection(ed);
-  };
-  ed.view.dom.addEventListener('mouseup', syncAddBtn);
-  ed.view.dom.addEventListener('keyup', syncAddBtn);
-  syncAddBtn();
-
-  addBtn.addEventListener('click', () => {
-    // Allocate an id free across BOTH the store and the document's anchors, since
-    // the store thread is created lazily on the first reply.
-    const inUse = [
-      ...app.threads.map((t) => t.id),
-      ...extractAnchors(currentMarkdown(app.ed)).map((a) => a.id),
-    ];
-    const id = nextThreadId(inUse);
-    if (!applyAnchor(app.ed, id)) return; // no selection (button should be disabled)
-    app.expanded.add(id); // a thread you just opened starts expanded
-    app.focusReplyFor = id; // focus its reply box once the sidebar re-renders
-    void rerender(app);
-  });
+  // Highlighting a span auto-anchors a new thread on it (see autoAnchorFromSelection).
+  ed.view.dom.addEventListener('mouseup', () => autoAnchorFromSelection(app));
+  ed.view.dom.addEventListener('keyup', () => autoAnchorFromSelection(app));
 
   const commitBtn = document.getElementById('commit') as HTMLButtonElement | null;
-  if (commitBtn) wireCommit(ed, commitBtn);
+  if (commitBtn) wireCommit(app, commitBtn);
+
+  const saveDraftBtn = document.getElementById('save-draft') as HTMLButtonElement | null;
+  if (saveDraftBtn) wireSaveDraft(app, saveDraftBtn);
 
   // "Reload" pulls the latest committed doc (e.g. after Claude's turn) and the
   // latest store, then re-derives the view against the previous commit.
@@ -172,6 +182,7 @@ async function main(): Promise<void> {
       reloadBtn.disabled = true;
       try {
         const next = await loadState();
+        setSampleBannerVisible(next.isSample);
         loadMarkdown(app.ed, next.current);
         app.baselineMd = next.baseline;
         app.baselineIso = next.baselineIso;
@@ -205,17 +216,81 @@ async function main(): Promise<void> {
 }
 
 /**
+ * Auto-anchor a new thread on the current selection (replaces an explicit "Add
+ * comment" button): any highlight becomes a thread, its reply box opening
+ * focused. Guards against re-anchoring text that's already commented, and
+ * against firing repeatedly for the same settled selection (mouseup fires once
+ * per drag, but keyup can re-fire while extending a selection with the
+ * keyboard — {@link selectionOverlapsAnchor} short-circuits once this exact span
+ * is already wrapped by the anchor we just applied).
+ *
+ * A previously pending (unconfirmed — no reply yet) thread is abandoned the
+ * moment a *different* highlight starts: its anchor is removed only AFTER the
+ * new one is safely applied, because removal round-trips through
+ * serialise→reload (see {@link removeAnchor}) which would otherwise reset the
+ * live selection before it could be anchored.
+ */
+function autoAnchorFromSelection(app: App): void {
+  if (!hasTextSelection(app.ed)) return;
+  if (selectionOverlapsAnchor(app.ed)) return;
+
+  // Allocate an id free across BOTH the store and the document's anchors, since
+  // the store thread is created lazily on the first reply.
+  const inUse = [
+    ...app.threads.map((t) => t.id),
+    ...extractAnchors(currentMarkdown(app.ed)).map((a) => a.id),
+  ];
+  const id = nextThreadId(inUse);
+  if (!applyAnchor(app.ed, id)) return; // no selection after all (race) — no-op
+
+  const previousPending = app.pendingThreadId;
+  app.pendingThreadId = id;
+  app.expanded.add(id); // a thread you just opened starts expanded
+  app.focusReplyFor = id; // focus its reply box once the sidebar re-renders
+  if (previousPending && previousPending !== id) {
+    app.expanded.delete(previousPending);
+    removeAnchor(app.ed, previousPending);
+  }
+  void rerender(app);
+}
+
+/**
+ * Drop a pending (unconfirmed) thread's anchor entirely — its box was abandoned
+ * empty, or it's being superseded by a commit/save that must not persist a
+ * comment-less highlight. Does not touch the store: a pending thread never had
+ * an entry there (created lazily on the first reply).
+ */
+function dropPendingThread(app: App, id: string): void {
+  app.expanded.delete(id);
+  if (app.pendingThreadId === id) app.pendingThreadId = null;
+  removeAnchor(app.ed, id);
+}
+
+/**
+ * Settle any still-pending thread before the doc is serialised for hand-off
+ * (commit or save-draft) — an anchor with no comment behind it must never be
+ * persisted to disk.
+ */
+async function settlePending(app: App): Promise<void> {
+  const id = app.pendingThreadId;
+  if (!id) return;
+  dropPendingThread(app, id);
+  await rerender(app);
+}
+
+/**
  * Commit the current document state to the workspace git repo (commit == turn).
  * Serialises the live doc via the M0 path and POSTs it to `/commit`, which renders
  * the turn (reading the store) and git-commits the doc.
  */
-function wireCommit(ed: DocloopEditor, btn: HTMLButtonElement): void {
+function wireCommit(app: App, btn: HTMLButtonElement): void {
   const label = btn.textContent;
   btn.addEventListener('click', async () => {
     btn.disabled = true;
     btn.textContent = 'Committing…';
     try {
-      const res = await fetch('/commit', { method: 'POST', body: currentMarkdown(ed) });
+      await settlePending(app);
+      const res = await fetch('/commit', { method: 'POST', body: currentMarkdown(app.ed) });
       const json = (await res.json()) as { ok: boolean; committed?: boolean; commit?: string };
       btn.textContent = !json.ok
         ? 'Commit failed'
@@ -229,6 +304,34 @@ function wireCommit(ed: DocloopEditor, btn: HTMLButtonElement): void {
         btn.textContent = label;
         btn.disabled = false;
       }, 2500);
+    }
+  });
+}
+
+/**
+ * Save the current document to the workspace working tree WITHOUT committing:
+ * no git commit, no turn.xml render. Lets the human bank progress across
+ * several sessions before one real "Hand to Claude" turn — see /save-draft in
+ * vite.config.ts for why this is safe (the diff and Claude's turn view are
+ * unaffected either way).
+ */
+function wireSaveDraft(app: App, btn: HTMLButtonElement): void {
+  const label = btn.textContent;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+      await settlePending(app);
+      const res = await fetch('/save-draft', { method: 'POST', body: currentMarkdown(app.ed) });
+      const json = (await res.json()) as { ok: boolean };
+      btn.textContent = json.ok ? 'Saved' : 'Save failed';
+    } catch {
+      btn.textContent = 'Save failed';
+    } finally {
+      window.setTimeout(() => {
+        btn.textContent = label;
+        btn.disabled = false;
+      }, 2000);
     }
   });
 }
@@ -263,8 +366,31 @@ async function deleteThread(app: App, id: string): Promise<void> {
   }
 }
 
+/**
+ * Serialises every call to {@link rerender} onto one queue, so overlapping
+ * calls run one-after-another instead of racing. `rerender` is fired
+ * `void`-style ("fire and forget") from most call sites (a highlight, a
+ * click), and its body awaits several async steps (tearing down comment
+ * editors, awaiting new ones) while mutating SHARED state
+ * (`app.commentEditors`, `app.els.threads`'s DOM, `app.focusReplyFor`) — two
+ * calls started close together used to run concurrently, and whichever
+ * finished last would clobber whatever the other had just built (two rapid
+ * highlights — a second thread created before the first's rerender had
+ * settled — could leave the sidebar with zero threads rendered at all; see
+ * `test/serial-queue.test.ts` for a deterministic reproduction of the
+ * underlying race this queue closes).
+ */
+const renderQueue = createSerialQueue((err) => {
+  // eslint-disable-next-line no-console
+  console.error('rerender failed', err);
+});
+
 /** Re-derive decorations + the margin gutter (comment + change cards). */
-async function rerender(app: App): Promise<void> {
+function rerender(app: App): Promise<void> {
+  return renderQueue(() => renderNow(app));
+}
+
+async function renderNow(app: App): Promise<void> {
   const { ed } = app;
   const baselineDoc = ed.parse(app.baselineMd);
   const liveDoc = ed.view.state.doc;
@@ -309,21 +435,25 @@ function scheduleLayout(app: App): void {
  * its target's vertical position in the doc, but never above the previous card, so
  * cards stack downward and never overlap (the one whose target is higher wins the
  * spot; the next slides below it). A thread's target is its anchor highlight; a
- * change card's is its PM `from` position. The gutter is grown to the lowest card
- * so the page scrolls to reveal it. Re-run on every open/close/expand/accept/resize.
+ * change card's is its PM `from` position. The gutter (and so the sidebar's
+ * dividing border) is grown to whichever is taller: the lowest card, or the main
+ * document — never just stopping at the last comment. Re-run on every
+ * open/close/expand/accept/resize.
  */
 function layoutGutter(app: App): void {
   const gutter = app.els.threads;
   const sidebar = gutter.closest('.sidebar') as HTMLElement | null;
-  const cards = Array.from(gutter.querySelectorAll<HTMLElement>('.thread, .change-card'));
   if (!sidebar) return;
-  if (cards.length === 0) {
-    sidebar.style.minHeight = '';
-    return;
-  }
 
   const originTop = sidebar.getBoundingClientRect().top;
   const editorDom = app.ed.view.dom;
+  const docBottom = Math.max(0, editorDom.getBoundingClientRect().bottom - originTop);
+
+  const cards = Array.from(gutter.querySelectorAll<HTMLElement>('.thread, .change-card'));
+  if (cards.length === 0) {
+    sidebar.style.minHeight = `${docBottom}px`;
+    return;
+  }
 
   const yOf = (card: HTMLElement): number => {
     if (card.dataset.thread) {
@@ -351,7 +481,7 @@ function layoutGutter(app: App): void {
     card.style.top = `${top}px`;
     cursor = top + card.offsetHeight + GAP;
   }
-  sidebar.style.minHeight = `${cursor}px`;
+  sidebar.style.minHeight = `${Math.max(cursor, docBottom)}px`;
 }
 
 /**
@@ -458,6 +588,7 @@ async function renderThreads(app: App, anchors: Anchor[]): Promise<void> {
     resolveBtn.title = 'Unwrap the anchor and delete this thread';
     resolveBtn.addEventListener('click', async (e) => {
       e.stopPropagation(); // don't also toggle collapse
+      if (app.pendingThreadId === a.id) app.pendingThreadId = null; // no longer pending
       removeAnchor(app.ed, a.id); // document side
       await deleteThread(app, a.id); // store side
       await rerender(app);
@@ -526,11 +657,13 @@ async function renderThreads(app: App, anchors: Anchor[]): Promise<void> {
       }
     }
 
-    // Reply box.
+    // Reply / initial-comment box: an auto-growing textarea (rows grow with the
+    // comment rather than scrolling a single line). Enter submits; Shift+Enter
+    // inserts a newline.
     const form = document.createElement('form');
     form.className = 'reply-form';
-    const input = document.createElement('input');
-    input.type = 'text';
+    const input = document.createElement('textarea');
+    input.rows = 1;
     input.placeholder = 'Reply…';
     input.className = 'reply-input';
     form.appendChild(input);
@@ -539,10 +672,36 @@ async function renderThreads(app: App, anchors: Anchor[]): Promise<void> {
     send.className = 'btn';
     send.textContent = 'Reply';
     form.appendChild(send);
+
+    const autoGrow = () => {
+      input.style.height = 'auto';
+      input.style.height = `${input.scrollHeight}px`;
+    };
+    input.addEventListener('input', () => {
+      autoGrow();
+      scheduleLayout(app); // height changed → restack the gutter
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        form.requestSubmit();
+      }
+    });
+    // A freshly auto-anchored thread (from highlighting) has no store entry yet
+    // — abandoning its box empty must drop the anchor, not leave a dangling
+    // highlight with nothing behind it.
+    input.addEventListener('blur', () => {
+      if (app.pendingThreadId === a.id && input.value.trim() === '') {
+        dropPendingThread(app, a.id);
+        void rerender(app);
+      }
+    });
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const text = input.value.trim();
       if (!text) return;
+      if (app.pendingThreadId === a.id) app.pendingThreadId = null; // confirmed
       app.expanded.add(a.id); // keep it open across the re-render
       app.focusReplyFor = a.id;
       await postReply(app, a.id, text);
@@ -552,7 +711,10 @@ async function renderThreads(app: App, anchors: Anchor[]): Promise<void> {
 
     host.appendChild(li);
 
-    if (app.focusReplyFor === a.id) input.focus();
+    if (app.focusReplyFor === a.id) {
+      input.focus();
+      autoGrow();
+    }
   }
 
   app.focusReplyFor = null;

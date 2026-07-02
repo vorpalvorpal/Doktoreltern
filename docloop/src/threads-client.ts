@@ -40,6 +40,19 @@ export async function replyThread(id: string, body: string, author = 'rjs'): Pro
   });
 }
 
+/**
+ * PUT /threads/<id>/<seq> → amend an existing comment's body in place. Used
+ * by the compose box's blur-driven upsert to amend a still-in-progress draft
+ * rather than stacking a new comment on every blur.
+ */
+export async function updateComment(id: string, seq: number, body: string): Promise<void> {
+  await fetch(`/threads/${encodeURIComponent(id)}/${seq}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ body }),
+  });
+}
+
 /** DELETE /threads/<id> → resolve (remove) the thread's store directory. */
 export async function resolveThread(id: string): Promise<void> {
   await fetch(`/threads/${encodeURIComponent(id)}`, { method: 'DELETE' });

@@ -7,6 +7,7 @@ import {
   listThreads,
   readThread,
   addComment,
+  updateComment,
   resolveThread,
 } from '../src/threads-store';
 
@@ -71,6 +72,43 @@ describe('addComment', () => {
     const c = await addComment(base, 't1', { author: 'rjs', body: 'no date' });
     // Round-trips as a valid ISO instant.
     expect(new Date(c.created).toISOString()).toBe(c.created);
+  });
+});
+
+describe('updateComment', () => {
+  it('overwrites the body but preserves author and created', async () => {
+    await addComment(base, 't1', {
+      author: 'rjs',
+      body: 'draft one',
+      created: '2026-06-29T10:00:00.000Z',
+    });
+
+    const updated = await updateComment(base, 't1', 1, 'draft two, revised');
+    expect(updated).toEqual({
+      seq: 1,
+      author: 'rjs',
+      created: '2026-06-29T10:00:00.000Z',
+      body: 'draft two, revised',
+    });
+
+    // Overwrites in place — still exactly one file, no 0002.md created.
+    const [thread] = await listThreads(base);
+    expect(thread.comments).toHaveLength(1);
+    expect(thread.comments[0].body).toBe('draft two, revised');
+  });
+
+  it('does not disturb other comments in the same thread', async () => {
+    await addComment(base, 't1', { author: 'rjs', body: 'first' });
+    await addComment(base, 't1', { author: 'rjs', body: 'second' });
+
+    await updateComment(base, 't1', 1, 'first, amended');
+
+    const [thread] = await listThreads(base);
+    expect(thread.comments.map((c) => c.body)).toEqual(['first, amended', 'second']);
+  });
+
+  it('rejects amending a comment that does not exist', async () => {
+    await expect(updateComment(base, 't1', 1, 'nothing here yet')).rejects.toThrow();
   });
 });
 

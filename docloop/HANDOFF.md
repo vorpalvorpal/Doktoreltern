@@ -35,37 +35,67 @@ Comments are stored out-of-line:
 
 ## Your turn
 
+Anchors, comments, and lint checks go through dedicated tools now — never
+hand-author `:mark` directive syntax, thread ids, or comment frontmatter
+yourself (the same principle the GUI itself follows: it wraps a live
+selection rather than letting a human type the directive).
+
 1. **Read** `docloop/workspace/turn.xml` — that's the human's delta and the
    threads waiting on you.
-2. **Edit** `docloop/workspace/doc.md` for any requested prose changes.
-   - To leave your *own* comment on the human's text, wrap a span in
-     `:mark[…]{#tN}` with a fresh id (`tN` = max existing id + 1, across both the
-     doc's anchors and the `threads/` dirs).
-   - To **resolve** a thread, delete its `:mark` anchor from the doc *and* remove
-     its `threads/<id>/` directory.
-3. **Reply** in a thread by adding the next-numbered `NNNN.md` under
-   `docloop/workspace/threads/<id>/`, with frontmatter `author: C` and `created:`
-   a current **UTC** ISO timestamp, e.g.:
+2. **Edit** `docloop/workspace/doc.md` directly for any requested prose changes.
+3. **Comment** on the human's text by anchoring a span:
+   `npm run thread -- new "<exact span>"` (reply body via stdin), e.g.:
    ```
-   ---
-   author: C
-   created: 2026-06-30T09:00:00.000Z
-   ---
-   Your reply, as normal Markdown.
+   echo "why this phrasing?" | npm run thread -- new "the exact span to anchor"
    ```
-4. **Normalise** the doc so the diff stays byte-clean (skipping this produces
-   spurious diff noise): from the `docloop/` directory run
-   `npm run canonicalize -- workspace/doc.md`.
-5. **Commit** the turn in the workspace repo:
+   This allocates the next id, applies the anchor via the same function the
+   GUI's own highlight-and-comment action uses, and creates the first comment —
+   printing the assigned id. Errors (rather than guessing) if the span is
+   missing or ambiguous in the doc.
+4. **Reply** to an existing thread: `npm run thread -- reply <id>` (body via
+   stdin).
+5. **Resolve** a thread: `npm run thread -- resolve <id>` — unwraps the anchor
+   back to plain text and deletes `threads/<id>/` in one step.
+6. If you hand-edited `doc.md` prose in step 2, **normalise** it so the diff
+   stays byte-clean: `npm run canonicalize -- workspace/doc.md`. This can now
+   **fail loudly** (nonzero exit, no write) if it detects the normalisation
+   would corrupt the text — if it does, stop and investigate; don't commit
+   around it.
+7. **Lint the turn**: `npm run lint-turn` — must exit 0 before committing (it
+   checks anchors ↔ thread directories ↔ well-formed frontmatter are all
+   consistent).
+8. **Commit** the turn in the workspace repo:
    `git -C workspace add doc.md threads && git -C workspace commit -m "…"`.
 
 The human then clicks **Reload** in the GUI and sees your edits diffed against
 their last turn, with your replies in the margin. Keep edits surgical and prose
 canonical — the whole point of the loop is honest, low-noise diffs.
 
+### Notes
+
+- **Multi-span, same-id anchors are legal** — one thread id can anchor several
+  disjoint spans in the doc.
+- **Don't anchor inside inline code** — it splits the code span in two. Anchor
+  the surrounding text instead.
+- **`turn.xml` is GUI-owned working state.** Expect it to show as modified
+  after your turn; never `git add` it.
+- **Don't number headings manually.** Unnumbered headings mean inserting a
+  section is a clean single-block add instead of a renumbering cascade, and it
+  plays badly with `<edits>` diffing otherwise.
+
 ## Running the GUI (the human's side)
 
 From `docloop/`: `npm run dev`, then open the printed URL (default
 `http://localhost:5173`). Not needed to take a turn, but useful for seeing the
 state. "Hand to Claude" commits the human's turn and writes `turn.xml`; "Reload"
-pulls the latest committed doc.
+pulls the latest committed doc; "Save draft" writes `doc.md` to disk *without*
+committing or touching `turn.xml` — it lets the human bank edits across several
+sittings before one real "Hand to Claude" turn.
+
+**Only "Hand to Claude" is a real turn boundary.** If you're picking up a turn,
+the human is expected to have clicked that, not just Save draft. A dangling
+uncommitted draft left on disk gets folded silently into whatever you `git add
+&& git commit` next (no data loss, but it blurs whose edits are whose) — if
+`git status` in `workspace/` shows `doc.md` modified *before* you've made any
+edits of your own, that's a leftover draft, not something you introduced; flag
+it to the human rather than committing over it.

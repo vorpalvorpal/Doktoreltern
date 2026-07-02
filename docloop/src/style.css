@@ -67,6 +67,26 @@ body {
 .topbar .muted { color: var(--muted); }
 .topbar .legend { margin-left: auto; display: flex; gap: 0.4rem; }
 
+/* Shown whenever the app has fallen back to the bundled sample doc (no
+   workspace reachable) — must never look like real content silently
+   disappeared. */
+.sample-banner {
+  padding: 0.5rem 1rem;
+  background: var(--del-bg);
+  color: var(--del-fg);
+  font-size: 0.82rem;
+  border-bottom: 1px solid var(--rule);
+  position: sticky;
+  top: 0;
+  z-index: 9;
+}
+.sample-banner code {
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 3px;
+  padding: 0.05em 0.3em;
+}
+.sample-banner[hidden] { display: none; }
+
 .chip {
   font-size: 0.72rem;
   padding: 0.1rem 0.45rem;
@@ -278,7 +298,7 @@ body {
 .btn-reject { border-color: var(--del-fg); color: var(--del-fg); }
 
 /* --- reply box --- */
-.reply-form { display: flex; gap: 0.35rem; }
+.reply-form { display: flex; gap: 0.35rem; align-items: flex-end; }
 .reply-input {
   flex: 1;
   font: inherit;
@@ -288,6 +308,11 @@ body {
   border-radius: 6px;
   background: var(--panel);
   color: var(--fg);
+  /* grows with content (main.ts sets height = scrollHeight on input) rather than
+     scrolling a fixed single line */
+  resize: none;
+  overflow: hidden;
+  min-height: 1.6em;
 }
 
 /* --- change-approval cards (in the margin gutter, beside the change) --- */

@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { renderTurn } from './src/turn';
-import { listThreads, addComment, resolveThread, newThreadId } from './src/threads-store';
+import { listThreads, addComment, updateComment, resolveThread, newThreadId } from './src/threads-store';
 
 const run = promisify(execFile);
 
@@ -177,11 +177,12 @@ function docloopEndpoints(): Plugin {
 
       // /threads — the sidecar comment store (threads/<id>/NNNN.md). The browser
       // can't touch the filesystem, so it reaches the store through here.
-      //   GET    /threads        → { threads: [...] }   (all threads + comments)
-      //   POST   /threads        → create a new thread (allocates the id) + 1st comment
-      //   POST   /threads/<id>   → append a comment (reply) to an existing thread
-      //   DELETE /threads/<id>   → resolve (delete) the thread
-      // Body for POST is JSON `{ author, body }`.
+      //   GET    /threads              → { threads: [...] }   (all threads + comments)
+      //   POST   /threads              → create a new thread (allocates the id) + 1st comment
+      //   POST   /threads/<id>         → append a comment (reply) to an existing thread
+      //   PUT    /threads/<id>/<seq>   → amend an existing comment's body in place
+      //   DELETE /threads/<id>         → resolve (delete) the thread
+      // Body for POST/PUT is JSON `{ author, body }` / `{ body }`.
       server.middlewares.use('/threads', (req, res, next) => {
         const id = (req.url ?? '/').replace(/^\/+/, '').split('?')[0];
         void (async () => {
@@ -199,6 +200,19 @@ function docloopEndpoints(): Plugin {
               const threadId =
                 id || newThreadId((await listThreads(threadsDir)).map((t) => t.id));
               const comment = await addComment(threadsDir, threadId, { author, body });
+              return send(res, 200, { ok: true, id: threadId, comment });
+            }
+            if (req.method === 'PUT') {
+              // PUT /threads/<id>/<seq> — amend an existing comment in place
+              // (the compose box's blur-driven upsert; see updateComment).
+              const [threadId, seqStr] = id.split('/');
+              const seq = Number(seqStr);
+              if (!threadId || !Number.isInteger(seq)) {
+                return send(res, 400, { ok: false, error: 'expected PUT /threads/<id>/<seq>' });
+              }
+              const raw = await readBody(req);
+              const input = raw ? (JSON.parse(raw) as { body?: string }) : {};
+              const comment = await updateComment(threadsDir, threadId, seq, String(input.body ?? ''));
               return send(res, 200, { ok: true, id: threadId, comment });
             }
             if (req.method === 'DELETE') {
