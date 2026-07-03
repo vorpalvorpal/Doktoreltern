@@ -256,6 +256,7 @@ body {
 .thread-body { color: var(--fg); margin-bottom: 0.4rem; }
 .thread-orphan { color: var(--del-fg); }
 .muted { color: var(--muted); }
+.comment-render-error { color: var(--del-fg); font-style: italic; }
 
 /* --- individual comments (collapsible) --- */
 .comment { border-top: 1px solid var(--rule); padding: 0.3rem 0; }
