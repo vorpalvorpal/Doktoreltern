@@ -49,6 +49,8 @@ import {
 import { listChanges, rejectChange, type Change } from './changes';
 import { OLD_MD, NEW_MD, SAMPLE_THREADS } from './sample';
 import { createSerialQueue } from './serial-queue';
+import { fetchSkills, runSkill, type SkillMeta } from './skills-client';
+import { slashMenuPlugin } from './slash-menu-plugin';
 
 /** Mutable app state: the editor, the diff baseline, and the cached store. */
 interface App {
@@ -92,6 +94,8 @@ interface App {
    * just "no draft yet").
    */
   draftSeq: Map<string, number>;
+  /** The docloop plugin's skill roster, fetched once at startup — the slash-trigger dropdown's source list. */
+  skillCommands: SkillMeta[];
 }
 
 /**
@@ -159,6 +163,7 @@ async function main(): Promise<void> {
 
   const { current, baseline, baselineIso, isSample } = await loadState();
   const { threads, usingStore } = await loadThreads();
+  const skillCommands = await fetchSkills();
   setSampleBannerVisible(isSample);
 
   const ed = await createEditor(editorRoot, current, {
@@ -181,6 +186,7 @@ async function main(): Promise<void> {
     composeThreadId: null,
     composeEditor: null,
     draftSeq: new Map(),
+    skillCommands,
   };
 
   // Highlighting a span auto-anchors a new thread on it (see autoAnchorFromSelection).
@@ -302,11 +308,48 @@ async function deactivateCompose(app: App): Promise<void> {
       removeAnchor(app.ed, id);
     }
   } else {
-    const body = currentMarkdown(ed);
+    const body = await resolveComposeBody(app, ed);
     const seq = await upsertDraft(app, id, body, hasDraft ? (app.draftSeq.get(id) ?? null) : null);
     app.draftSeq.set(id, seq);
   }
   await rerender(app);
+}
+
+/**
+ * Matches a slash command still recognisable in a *finished* compose box:
+ * `/name` at the very start, at least one whitespace char, then the rest as
+ * context — e.g. `/example hello world` or `/example\nhello world`.
+ */
+const SLASH_COMMAND_RE = /^\/(\S+)\s+([\s\S]*)$/;
+
+/**
+ * If the compose box's content is a recognised slash command
+ * (`/<skill-name> <context>`), resolve it live (see skills-client.ts
+ * `runSkill`) and return the skill's result — that becomes the saved
+ * comment, not the literal `/command …` text. Anything else (including a
+ * `/word` that doesn't match a known skill) passes through unchanged, so an
+ * ordinary comment that happens to start with a slash is never mistaken for
+ * a command. On a failed run, keeps the human's original text (appending the
+ * error) rather than losing it.
+ *
+ * No loading indicator is shown while this is in flight — the compose box is
+ * already gone by the time this runs (deactivation happens on blur, before
+ * the result is known), so a slash-command reply can take a few seconds to
+ * appear with no visible progress. Worth revisiting if it proves confusing
+ * in practice; out of scope for proving the invocation mechanism itself.
+ */
+async function resolveComposeBody(app: App, ed: DocloopEditor): Promise<string> {
+  const body = currentMarkdown(ed);
+  const match = SLASH_COMMAND_RE.exec(body);
+  if (!match) return body;
+  const [, name, context] = match;
+  if (!app.skillCommands.some((c) => c.name === name)) return body;
+  try {
+    return await runSkill(name, context.trim());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return `${body}\n\n_(⚠ /${name} failed: ${message})_`;
+  }
 }
 
 /**
@@ -778,7 +821,10 @@ async function mountCompose(
 ): Promise<void> {
   const draftSeq = app.draftSeq.get(id);
   const seed = draftSeq != null ? (comments.find((c) => c.seq === draftSeq)?.body ?? '') : '';
-  const ed = await createEditor(host, seed, { editable: true });
+  const ed = await createEditor(host, seed, {
+    editable: true,
+    plugins: [slashMenuPlugin(() => app.skillCommands)],
+  });
   if (app.composeThreadId !== id) {
     await ed.destroy();
     return;

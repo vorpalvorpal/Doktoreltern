@@ -108,6 +108,13 @@ body {
   align-items: start;
 }
 
+/* ProseMirror's own recommendation (it warns in the console without this):
+   without it, a browser can collapse meaningful whitespace — e.g. the
+   trailing space the slash-menu inserts after a selected command name,
+   silently merging it into whatever's typed next. Applies to every Milkdown
+   instance (main doc, read-only comments, the compose box alike). */
+.milkdown .ProseMirror { white-space: pre-wrap; }
+
 .doc {
   line-height: 1.6;
   font-size: 1rem;
@@ -318,6 +325,43 @@ body {
 }
 .compose-host .milkdown :first-child { margin-top: 0; }
 .compose-host .milkdown :last-child { margin-bottom: 0; }
+
+/* --- slash-trigger dropdown: docloop skill commands, typed "/" inside the
+   compose box (see slash-menu-plugin.ts). SlashProvider positions it via
+   inline left/top; `position` + the [data-show] visibility toggle are ours. --- */
+.slash-menu {
+  position: absolute;
+  z-index: 20;
+  display: none;
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 0.25rem;
+}
+.slash-menu[data-show='true'] { display: block; }
+.slash-menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.slash-menu-item.active,
+.slash-menu-item:hover { background: var(--code-bg); }
+.slash-menu-name { font-weight: 600; font-size: 0.8rem; color: var(--accent); }
+.slash-menu-desc {
+  font-size: 0.72rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* --- change-approval cards (in the margin gutter, beside the change) --- */
 .change-card {

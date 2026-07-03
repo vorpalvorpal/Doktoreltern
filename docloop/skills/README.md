@@ -1,9 +1,15 @@
 # docloop skills
 
 Skills registered under the `docloop` plugin are invoked **live**, synchronously,
-while a human is mid-edit in the docloop GUI — see `docloop/vite.config.ts`'s
-`POST /run-skill` and the Claude Agent SDK invocation it wraps (`skills:
-['docloop:<name>']`, `tools: []`, `permissionMode: 'dontAsk'`).
+while a human is composing a comment in the docloop GUI (typing `/skill-name
+context…`, via the slash-trigger dropdown) — see `docloop/vite.config.ts`'s
+`POST /run-skill`. It reads the skill's own `SKILL.md` body straight off the
+working tree (frontmatter stripped) and uses it as the Claude Agent SDK's
+`systemPrompt` for a single-turn `query()` call with `tools: []` and
+`permissionMode: 'dontAsk'` — **not** the SDK's `skills: [...]` allowlist
+option, which resolves against the *installed* plugin registry
+(`~/.claude/plugins/...`) rather than this repo's own working tree, and would
+go stale the moment this file changes without a separate plugin reinstall.
 
 Because of that, every skill here must be:
 
@@ -15,6 +21,16 @@ Because of that, every skill here must be:
   assistant prose to parse back out.
 - **Non-mode-changing.** No `EnterPlanMode`, no spawning subagents, nothing
   that expects a back-and-forth the live-invocation bridge can't provide.
+- **Markdown- and directive-safe output.** A skill's result becomes a comment
+  body, round-tripped through the same `remark-directive` parser that reads
+  `:mark[…]{#id}` anchors — and that parser treats a bare `:name` (no
+  brackets needed) as an attempted directive *anywhere* it appears, crashing
+  the comment's re-render if `name` isn't a recognised one. Concretely: **never
+  emit a colon directly between two word characters** (`word:word` — no
+  space) in a skill's output; `docloop:example` broke this, `docloop-example`
+  didn't. This isn't unique to skill output — any human-typed comment with
+  the same pattern hits the identical crash — but a skill's output is
+  templated, so it's cheap to get right once and forget about.
 
 This keeps the roster safe to invoke — including several in one turn, from
 several different tagged threads — **by construction**, not by runtime
