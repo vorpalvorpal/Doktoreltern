@@ -14,15 +14,33 @@
  * only this path matches the GUI byte-for-byte. Needs a DOM (the ProseMirror
  * view) — in the browser that's the real document; in Node, bootstrap jsdom first
  * (see scripts/canonicalize.ts).
+ *
+ * Milkdown's serializer (`@milkdown/transformer`'s `SerializerState#runNode`)
+ * unconditionally closes every mark on a PM text leaf with no lookahead at the
+ * next leaf, so a `strong` mark that should stay open around a nested `em` gets
+ * closed/reopened at each boundary — producing adjacent same-character delimiter
+ * runs that a downstream escape guard "safely" turns into literal, visible `\*\*`
+ * (a known, unfixed-for-this-case upstream bug: Milkdown/milkdown#704). Patching
+ * Milkdown itself is out of scope (forking an unexported class in a pinned
+ * dependency), so instead we detect and refuse: compare the flattened visible
+ * text before/after the round-trip and throw rather than silently returning
+ * corrupted output.
  */
 import { getMarkdown } from '@milkdown/utils';
 import { createEditor } from './editor';
+import { buildBodyTextIndex } from './decorations';
+import { contentDiffSummary } from './content-check';
 
 export async function canonicalize(markdown: string): Promise<string> {
   const root = document.createElement('div');
   const ed = await createEditor(root, markdown, { editable: true });
   try {
-    return ed.editor.action(getMarkdown());
+    const output = ed.editor.action(getMarkdown());
+    const before = buildBodyTextIndex(ed.parse(markdown)).text;
+    const after = buildBodyTextIndex(ed.parse(output)).text;
+    const diff = contentDiffSummary(before, after);
+    if (diff) throw new Error(`canonicalize: content changed during normalisation (${diff})`);
+    return output;
   } finally {
     await ed.destroy();
   }

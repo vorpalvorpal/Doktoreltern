@@ -106,6 +106,20 @@ describe('renderTurn (M3 LLM-facing turn render)', () => {
     expect(xml).not.toContain('id="t1"'); // unchanged → omitted
   });
 
+  it('bridges a short retained gap into one <del>/<ins> pair rather than splitting the edit', () => {
+    // Mirrors changes.test.ts's bridging case: two word-replacements 3 words
+    // apart ("dog"→"cat", "rug"→"mat") should read as ONE whole-span replace,
+    // not four separate word-level fragments.
+    const oldMd = 'the dog sat on the rug';
+    const newMd = 'the cat sat on the mat';
+    const xml = renderTurn(oldMd, newMd);
+    const edits = xml.slice(xml.indexOf('<edits'));
+    expect((edits.match(/<del>/g) ?? []).length).toBe(1);
+    expect((edits.match(/<ins>/g) ?? []).length).toBe(1);
+    expect(edits).toContain('<del>dog sat on the rug</del>');
+    expect(edits).toContain('<ins>cat sat on the mat</ins>');
+  });
+
   it('groups edits by their enclosing heading', () => {
     const oldMd = ['# A', '', 'one two three', '', '## B', '', 'four five six'].join('\n');
     const newMd = ['# A', '', 'one X three', '', '## B', '', 'four five Y six'].join('\n');
