@@ -29,14 +29,31 @@ export async function fetchThreads(): Promise<StoreThread[]> {
 
 /**
  * POST /threads/<id> → append a comment to thread `id`, creating the thread
- * directory if it doesn't exist yet (the lazy-create path: "Add comment" applies
- * the anchor with a fresh id; the store thread appears on the first reply here).
+ * directory if it doesn't exist yet (the lazy-create path: highlighting a
+ * span applies the anchor with a fresh id; the store thread appears on the
+ * first reply here). Returns the created comment (its `seq` is what the
+ * compose box's `draftSeq` tracks for later amending).
  */
-export async function replyThread(id: string, body: string, author = 'rjs'): Promise<void> {
-  await fetch(`/threads/${encodeURIComponent(id)}`, {
+export async function replyThread(id: string, body: string, author = 'rjs'): Promise<StoreComment> {
+  const res = await fetch(`/threads/${encodeURIComponent(id)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ author, body }),
+  });
+  const json = (await res.json()) as { ok: boolean; comment: StoreComment };
+  return json.comment;
+}
+
+/**
+ * PUT /threads/<id>/<seq> → amend an existing comment's body in place. Used
+ * by the compose box's blur-driven upsert to amend a still-in-progress draft
+ * rather than stacking a new comment on every blur.
+ */
+export async function updateComment(id: string, seq: number, body: string): Promise<void> {
+  await fetch(`/threads/${encodeURIComponent(id)}/${seq}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ body }),
   });
 }
 

@@ -15,12 +15,21 @@
         <span class="chip chip-del">deleted</span>
         <span class="chip chip-mark">comment anchor</span>
       </span>
-      <button id="add-comment" class="btn btn-primary" disabled>
-        Add comment
-      </button>
       <button id="reload" class="btn" title="Pull the latest committed doc (Claude's turn)">Reload</button>
-      <button id="commit" class="btn">Hand to Claude</button>
+      <button
+        id="save-draft"
+        class="btn"
+        title="Write to disk without committing — keep progress across sessions before Hand to Claude"
+      >
+        Save draft
+      </button>
+      <button id="commit" class="btn btn-primary">Hand to Claude</button>
     </header>
+    <div id="sample-banner" class="sample-banner" hidden>
+      ⚠ No workspace reachable — showing the bundled sample document, not your real doc. If
+      you've just changed <code>vite.config.ts</code>, restart the dev server (config/plugin
+      edits aren't hot-reloaded).
+    </div>
     <main class="layout">
       <!-- Milkdown mounts here -->
       <section id="editor" class="doc"></section>

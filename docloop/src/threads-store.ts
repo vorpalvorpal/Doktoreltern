@@ -200,6 +200,30 @@ export async function addComment(
 }
 
 /**
+ * Overwrite an existing comment's body in place, preserving its original
+ * `author`/`created` — used to amend a still-in-progress draft (see docloop's
+ * compose-box lifecycle: a thread's reply box auto-saves on blur, amending
+ * the same comment each time, until Save-draft/Commit seals it). Keeping the
+ * original `created` matters: amending must not reset "new since baseline"
+ * classification for a comment that's actually been sitting there a while.
+ * Throws if the comment file doesn't exist — callers only amend a seq they
+ * know they (or a prior amend) already created.
+ */
+export async function updateComment(
+  baseDir: string,
+  id: string,
+  seq: number,
+  body: string,
+): Promise<Comment> {
+  const name = String(seq).padStart(4, '0') + '.md';
+  const path = join(baseDir, id, name);
+  const existing = parseComment(seq, await readFile(path, 'utf8'));
+  const comment: Comment = { ...existing, body };
+  await writeFile(path, serializeComment(comment), 'utf8');
+  return comment;
+}
+
+/**
  * Resolve a thread by deleting its directory and all its comment files. A no-op
  * if the thread isn't there (`force: true` swallows ENOENT), so resolving an
  * already-resolved id is safe.

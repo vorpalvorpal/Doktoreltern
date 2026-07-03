@@ -3,23 +3,56 @@ import { mkdir, writeFile, readFile, access } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { join } from 'node:path';
+import { query } from '@anthropic-ai/claude-agent-sdk';
 import { renderTurn } from './src/turn';
-import { listThreads, addComment, resolveThread, newThreadId } from './src/threads-store';
+import { listThreads, addComment, updateComment, resolveThread, newThreadId } from './src/threads-store';
+import { listSkills, readSkillBody } from './src/skill-frontmatter';
 
 const run = promisify(execFile);
+
+/**
+ * Invoke one docloop skill live: its own SKILL.md body (frontmatter
+ * stripped) as the system prompt, `context` as the single user turn, no
+ * tool access, no interactive approval — an unattended invocation can only
+ * ever produce a final text response. Throws if the run errors or is denied
+ * (rather than returning a partial/empty result silently).
+ */
+async function runSkill(systemPrompt: string, context: string): Promise<string> {
+  let result: string | null = null;
+  for await (const message of query({
+    prompt: context,
+    options: { systemPrompt, tools: [], permissionMode: 'dontAsk' },
+  })) {
+    if (message.type === 'result') {
+      if (message.subtype === 'success') {
+        result = message.result;
+      } else {
+        throw new Error(`skill run failed: ${message.subtype}`);
+      }
+    }
+  }
+  if (result === null) throw new Error('skill run produced no result');
+  return result;
+}
 
 /**
  * Dev-only endpoints that close the doc↔LLM loop (M3). The workspace is a git
  * repo of its OWN, holding a single tracked `doc.md`; **each commit == one turn**
  * (human or Claude). It is separate from this code repo (workspace/ is gitignored).
  *
- *   POST /commit  — body = the document markdown. Renders the turn (the human's
- *                   delta vs the last commit) to `workspace/turn.xml` for Claude
- *                   to read, then writes + commits `doc.md`. The "Hand to Claude".
- *   GET  /doc     — returns `{ current, baseline }` from git so the GUI can (re)load
- *                   real state: current = HEAD's doc.md, baseline = the commit
- *                   before it. After Claude edits + commits, a GUI reload shows
- *                   Claude's changes as diffs against the human's last turn.
+ *   POST /commit         — body = the document markdown. Renders the turn (the
+ *                          human's delta vs the last commit) to
+ *                          `workspace/turn.xml` for Claude to read, then writes
+ *                          + commits `doc.md`. The "Hand to Claude".
+ *   GET  /doc            — returns `{ current, baseline }` from git so the GUI
+ *                          can (re)load real state: current = HEAD's doc.md,
+ *                          baseline = the commit before it. After Claude edits
+ *                          + commits, a GUI reload shows Claude's changes as
+ *                          diffs against the human's last turn.
+ *   GET  /docloop-skills — the docloop plugin's skill roster, for the
+ *                          slash-trigger dropdown (see skills/README.md).
+ *   POST /run-skill      — invoke one docloop skill live, synchronously,
+ *                          while the human is still composing (see runSkill).
  *
  * The hand-off to Claude itself is out of band: Claude (hand-simulating the MCP
  * for this v0 — see the wiki dogfooding note) reads `workspace/turn.xml`, edits
@@ -35,6 +68,7 @@ function docloopEndpoints(): Plugin {
   const docPath = join(workspace, docName);
   const turnPath = join(workspace, 'turn.xml');
   const threadsDir = join(workspace, 'threads'); // sidecar store: threads/<id>/NNNN.md
+  const skillsDir = join(process.cwd(), 'skills'); // the docloop plugin's own skills (see skills/README.md)
   const git = (...args: string[]) => run('git', ['-C', workspace, ...args]);
 
   /**
@@ -177,11 +211,12 @@ function docloopEndpoints(): Plugin {
 
       // /threads — the sidecar comment store (threads/<id>/NNNN.md). The browser
       // can't touch the filesystem, so it reaches the store through here.
-      //   GET    /threads        → { threads: [...] }   (all threads + comments)
-      //   POST   /threads        → create a new thread (allocates the id) + 1st comment
-      //   POST   /threads/<id>   → append a comment (reply) to an existing thread
-      //   DELETE /threads/<id>   → resolve (delete) the thread
-      // Body for POST is JSON `{ author, body }`.
+      //   GET    /threads              → { threads: [...] }   (all threads + comments)
+      //   POST   /threads              → create a new thread (allocates the id) + 1st comment
+      //   POST   /threads/<id>         → append a comment (reply) to an existing thread
+      //   PUT    /threads/<id>/<seq>   → amend an existing comment's body in place
+      //   DELETE /threads/<id>         → resolve (delete) the thread
+      // Body for POST/PUT is JSON `{ author, body }` / `{ body }`.
       server.middlewares.use('/threads', (req, res, next) => {
         const id = (req.url ?? '/').replace(/^\/+/, '').split('?')[0];
         void (async () => {
@@ -201,12 +236,60 @@ function docloopEndpoints(): Plugin {
               const comment = await addComment(threadsDir, threadId, { author, body });
               return send(res, 200, { ok: true, id: threadId, comment });
             }
+            if (req.method === 'PUT') {
+              // PUT /threads/<id>/<seq> — amend an existing comment in place
+              // (the compose box's blur-driven upsert; see updateComment).
+              const [threadId, seqStr] = id.split('/');
+              const seq = Number(seqStr);
+              if (!threadId || !Number.isInteger(seq)) {
+                return send(res, 400, { ok: false, error: 'expected PUT /threads/<id>/<seq>' });
+              }
+              const raw = await readBody(req);
+              const input = raw ? (JSON.parse(raw) as { body?: string }) : {};
+              const comment = await updateComment(threadsDir, threadId, seq, String(input.body ?? ''));
+              return send(res, 200, { ok: true, id: threadId, comment });
+            }
             if (req.method === 'DELETE') {
               if (!id) return send(res, 400, { ok: false, error: 'missing thread id' });
               await resolveThread(threadsDir, id);
               return send(res, 200, { ok: true });
             }
             return next();
+          } catch (err) {
+            send(res, 500, { ok: false, error: String(err) });
+          }
+        })();
+      });
+
+      // GET /docloop-skills — the docloop plugin's own skill roster (name +
+      // description), for the slash-trigger dropdown in the compose box.
+      // Reads straight off the working tree (docloop/skills/*/SKILL.md), not
+      // the installed plugin registry — see runSkill's doc comment.
+      server.middlewares.use('/docloop-skills', (req, res, next) => {
+        if (req.method !== 'GET') return next();
+        void (async () => {
+          try {
+            send(res, 200, { ok: true, skills: await listSkills(skillsDir) });
+          } catch (err) {
+            send(res, 500, { ok: false, error: String(err) });
+          }
+        })();
+      });
+
+      // POST /run-skill — invoke one docloop skill live, synchronously, while
+      // the human is still composing (see runSkill). Body: { skill, context }.
+      server.middlewares.use('/run-skill', (req, res, next) => {
+        if (req.method !== 'POST') return next();
+        void (async () => {
+          try {
+            const raw = await readBody(req);
+            const input = raw ? (JSON.parse(raw) as { skill?: string; context?: string }) : {};
+            const skill = String(input.skill ?? '');
+            const context = String(input.context ?? '');
+            if (!skill) return send(res, 400, { ok: false, error: 'missing skill' });
+            const systemPrompt = await readSkillBody(skillsDir, skill);
+            const result = await runSkill(systemPrompt, context);
+            send(res, 200, { ok: true, result });
           } catch (err) {
             send(res, 500, { ok: false, error: String(err) });
           }

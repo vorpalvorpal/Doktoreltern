@@ -16,9 +16,12 @@ accept/reject) · **M3** the doc↔LLM loop.
 
 **The M3 loop** (a `vite` dev server, `npm run dev`):
 
-1. The human edits the doc and clicks **Hand to Claude** → `POST /commit` writes
-   `workspace/doc.md` and commits it in the workspace's own git repo
-   (**commit == turn**), and renders the human's delta to `workspace/turn.xml`.
+1. The human edits the doc, optionally clicking **Save draft** along the way
+   (`POST /save-draft` writes `workspace/doc.md` to disk with no commit and no
+   `turn.xml` — banks progress across sessions without advancing the turn), then
+   clicks **Hand to Claude** → `POST /commit` writes `workspace/doc.md` and
+   commits it in the workspace's own git repo (**commit == turn**), and renders
+   the human's delta to `workspace/turn.xml`.
 2. **Claude** (hand-simulating the MCP for this v0 — see the wiki dogfooding note)
    reads `turn.xml`, edits `doc.md`, **normalises it** with
    `npm run canonicalize -- workspace/doc.md`, then commits.

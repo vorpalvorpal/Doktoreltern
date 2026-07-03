@@ -7,6 +7,7 @@ import {
   currentMarkdown,
   loadMarkdown,
   hasTextSelection,
+  selectionOverlapsAnchor,
 } from '../src/write-actions';
 import { findMarkHighlights } from '../src/decorations';
 import { OLD_MD, NEW_MD } from '../src/sample';
@@ -73,6 +74,18 @@ describe('write actions (document side)', () => {
     expect(md).not.toContain('{#t1}'); // anchor directive gone
     expect(md).toContain('questionable claim'); // span survives as plain text
     expect(findMarkHighlights(ed.view.state.doc).length).toBe(0);
+  });
+
+  it('selectionOverlapsAnchor: true only when the selection touches an existing anchor', async () => {
+    ed = await createEditor(document.createElement('div'), NEW_MD, { editable: true });
+
+    // "questionable claim" is already anchored as t1 in the sample doc.
+    selectText(ed, 'questionable claim');
+    expect(selectionOverlapsAnchor(ed)).toBe(true);
+
+    // "quick" is plain, unanchored text.
+    selectText(ed, 'quick');
+    expect(selectionOverlapsAnchor(ed)).toBe(false);
   });
 
 });

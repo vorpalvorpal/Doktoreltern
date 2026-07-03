@@ -39,6 +39,28 @@ export function hasTextSelection(ed: DocloopEditor): boolean {
 }
 
 /**
+ * Does the current selection overlap an existing comment anchor? Highlighting
+ * auto-creates a new thread (see main.ts), and this guards against wrapping a
+ * second anchor over text that's already commented.
+ */
+export function selectionOverlapsAnchor(ed: DocloopEditor): boolean {
+  const { from, to } = ed.view.state.selection;
+  const markType = commentAnchorMark.type(ed.editor.ctx);
+  return ed.view.state.doc.rangeHasMark(from, to, markType);
+}
+
+/**
+ * Is the editor's document empty (no visible text)? The Milkdown-instance
+ * equivalent of `input.value.trim() === ''` for the old plain-textarea
+ * compose box — used to decide whether a blurred compose box should be
+ * treated as "nothing written" (abandon / just deactivate) or "has content"
+ * (save it).
+ */
+export function isDocEmpty(ed: DocloopEditor): boolean {
+  return ed.view.state.doc.textContent.trim() === '';
+}
+
+/**
  * Apply the comment anchor (`threadId` = `id`) to the current selection, marking
  * the span in PM space. Returns false (a no-op) if there's no selection to wrap.
  * The store thread is created lazily on the first reply, so this is all the

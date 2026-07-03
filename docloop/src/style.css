@@ -67,6 +67,26 @@ body {
 .topbar .muted { color: var(--muted); }
 .topbar .legend { margin-left: auto; display: flex; gap: 0.4rem; }
 
+/* Shown whenever the app has fallen back to the bundled sample doc (no
+   workspace reachable) — must never look like real content silently
+   disappeared. */
+.sample-banner {
+  padding: 0.5rem 1rem;
+  background: var(--del-bg);
+  color: var(--del-fg);
+  font-size: 0.82rem;
+  border-bottom: 1px solid var(--rule);
+  position: sticky;
+  top: 0;
+  z-index: 9;
+}
+.sample-banner code {
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 3px;
+  padding: 0.05em 0.3em;
+}
+.sample-banner[hidden] { display: none; }
+
 .chip {
   font-size: 0.72rem;
   padding: 0.1rem 0.45rem;
@@ -87,6 +107,13 @@ body {
   padding: 1.5rem 1rem;
   align-items: start;
 }
+
+/* ProseMirror's own recommendation (it warns in the console without this):
+   without it, a browser can collapse meaningful whitespace — e.g. the
+   trailing space the slash-menu inserts after a selected command name,
+   silently merging it into whatever's typed next. Applies to every Milkdown
+   instance (main doc, read-only comments, the compose box alike). */
+.milkdown .ProseMirror { white-space: pre-wrap; }
 
 .doc {
   line-height: 1.6;
@@ -277,17 +304,63 @@ body {
 .btn-accept { border-color: var(--ins-fg); color: var(--ins-fg); }
 .btn-reject { border-color: var(--del-fg); color: var(--del-fg); }
 
-/* --- reply box --- */
-.reply-form { display: flex; gap: 0.35rem; }
-.reply-input {
-  flex: 1;
-  font: inherit;
-  font-size: 0.8rem;
-  padding: 0.2rem 0.4rem;
-  border: 1px solid var(--rule);
+/* --- compose slot: the one live editable Milkdown instance, or a
+   placeholder that activates it on click (see main.ts mountCompose) --- */
+.compose-host { font-size: 0.8rem; }
+.reply-placeholder {
+  padding: 0.25rem 0.4rem;
+  border: 1px dashed var(--rule);
   border-radius: 6px;
+  cursor: text;
+}
+.reply-placeholder:hover { border-color: var(--accent); }
+/* The live compose editor: a real (editable) Milkdown instance mounted
+   directly into .compose-host — height grows with content naturally, no
+   manual sizing needed. */
+.compose-host .milkdown {
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 0.25rem 0.4rem;
   background: var(--panel);
-  color: var(--fg);
+}
+.compose-host .milkdown :first-child { margin-top: 0; }
+.compose-host .milkdown :last-child { margin-bottom: 0; }
+
+/* --- slash-trigger dropdown: docloop skill commands, typed "/" inside the
+   compose box (see slash-menu-plugin.ts). SlashProvider positions it via
+   inline left/top; `position` + the [data-show] visibility toggle are ours. --- */
+.slash-menu {
+  position: absolute;
+  z-index: 20;
+  display: none;
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 0.25rem;
+}
+.slash-menu[data-show='true'] { display: block; }
+.slash-menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.slash-menu-item.active,
+.slash-menu-item:hover { background: var(--code-bg); }
+.slash-menu-name { font-weight: 600; font-size: 0.8rem; color: var(--accent); }
+.slash-menu-desc {
+  font-size: 0.72rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* --- change-approval cards (in the margin gutter, beside the change) --- */
