@@ -32,4 +32,14 @@ describe('canonicalize (LLM→md normalisation step)', () => {
     expect(out).not.toContain('* one'); // bullets normalised to `-`
     expect(await canonicalize(out)).toBe(out); // and now stable
   });
+
+  it('rejects rather than silently corrupts nested-emphasis text (Milkdown/milkdown#704)', async () => {
+    // A `strong` mark wrapping a nested `em` (no anchors at all): Milkdown's
+    // serializer closes/reopens the strong mark at the em boundary, producing
+    // adjacent `**` runs that get escaped to literal `\*\*` — visibly wrong, but
+    // not something a naive round-trip check would catch by string equality
+    // alone. Confirmed via live repro against this exact input.
+    const raw = '**(better: *proportionate*), mostly-autonomous gate**';
+    await expect(canonicalize(raw)).rejects.toThrow(/content changed during normalisation/);
+  });
 });

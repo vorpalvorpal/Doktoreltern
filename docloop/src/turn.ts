@@ -20,7 +20,7 @@
  * in node tests and could run in the MCP later. A local model to classify/rank
  * deltas is parked as a future refinement, not v0.
  */
-import { computeDiff } from './diff';
+import { groupedDiff } from './grouped-diff';
 import { extractAnchors, stripAnchors } from './threads';
 import type { Thread, Comment } from './threads-store';
 
@@ -182,22 +182,31 @@ export function renderTurn(
     threadItems.push({ heading, xml: threadEl(a.id, a.text, 'resolved', []) });
   }
 
-  // --- Edits: word-diff of the body, each segment tagged with its section. ---
-  // Walk the diff keeping a cursor into the NEW body: equal/insert segments are
-  // present there (advance the cursor); a delete is not, so it inherits the
-  // section at the current cursor. (The diff invariant guarantees equal+insert
-  // reconstruct the new body, so the cursor stays accurate.)
+  // --- Edits: word-diff of the body, grouped into change runs (bridging short
+  // retained gaps, same coarsening src/changes.ts uses for the margin cards —
+  // see src/grouped-diff.ts) so a rewritten sentence reads as one whole-sentence
+  // replace instead of a chain of word fragments. Walk the groups keeping a
+  // cursor into the NEW body: unchanged spans and a change's newValue are
+  // present there (advance the cursor); oldValue is not, so a change inherits
+  // the section at the cursor BEFORE advancing.
+  //
+  // Known, accepted limitation (v0, same trade-off src/changes.ts already
+  // makes): bridging uses a raw word-count threshold with no heading-boundary
+  // awareness, so a retained gap of ≤3 "words" that happens to contain a short
+  // heading line could theoretically bridge two edits from different sections
+  // into one. Not worth extra machinery here.
   const editItems: SectionItem[] = [];
   let cursor = 0;
-  for (const seg of computeDiff(stripAnchors(oldMarkdown), editNew)) {
-    if (seg.type === 'equal') {
-      cursor += seg.value.length;
+  for (const it of groupedDiff(stripAnchors(oldMarkdown), editNew)) {
+    if (!it.change) {
+      cursor += it.value.length;
       continue;
     }
     const heading = headingAt(editHeadings, cursor);
-    const tag = seg.type === 'insert' ? 'ins' : 'del';
-    editItems.push({ heading, xml: `<${tag}>${esc(seg.value)}</${tag}>` });
-    if (seg.type === 'insert') cursor += seg.value.length;
+    const del = it.oldValue ? `<del>${esc(it.oldValue)}</del>` : '';
+    const ins = it.newValue ? `<ins>${esc(it.newValue)}</ins>` : '';
+    editItems.push({ heading, xml: `${del}${ins}` });
+    cursor += it.newValue.length;
   }
 
   return [

@@ -3,3 +3,5 @@ dist/
 coverage/
 workspace/
 *.log
+HANDOVER.md
+model-feedback.md
