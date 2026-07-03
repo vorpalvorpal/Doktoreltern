@@ -27,6 +27,7 @@
 import { $markSchema, $nodeSchema, $remark } from '@milkdown/utils';
 import type { MilkdownPlugin } from '@milkdown/ctx';
 import directive from 'remark-directive';
+import { createDirectiveNameGate } from './directive-gate';
 
 export const COMMENT_ANCHOR = 'commentAnchor';
 export const COMMENT_BLOCK = 'commentBlock';
@@ -40,6 +41,13 @@ const idOf = (node: unknown): string =>
 
 /** remark-directive: parse/stringify `:mark[…]{#id}` and `:::mark{#id}…:::`. */
 const remarkDirective = $remark('remarkDirective', () => directive);
+
+/**
+ * Demote any `:name…` directive OTHER than ours back to literal text (see
+ * src/directive-gate.ts) — otherwise a comment reading "note:check this" would
+ * crash Milkdown's read view.
+ */
+const remarkDirectiveGate = $remark('remarkDirectiveGate', () => createDirectiveNameGate([NAME]));
 
 /**
  * Inline anchor mark ↔ `textDirective` named `mark`. `inclusive` so typing at the
@@ -134,6 +142,7 @@ export const commentBlockNode = commentBlockSchema;
 /** Drop-in bundle: remark-directive + the inline mark + the container node. */
 export const directivePlugins: MilkdownPlugin[] = [
   ...remarkDirective,
+  ...remarkDirectiveGate,
   ...commentAnchorSchema,
   ...commentBlockSchema,
 ];

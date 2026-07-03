@@ -644,13 +644,30 @@ async function focusThread(app: App, id: string): Promise<void> {
     ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-/** Render one comment body as a read-only Milkdown instance inside `host`. */
+/**
+ * Render one comment body as a read-only Milkdown instance inside `host`.
+ *
+ * Isolated in its own try/catch: `createEditor` parses arbitrary markdown a
+ * human (or LLM) typed, so it can throw on content docloop's schema doesn't
+ * expect (e.g. an unhandled remark-directive edge case — see
+ * src/directive-gate.ts for the one this was written for). One bad comment
+ * failing to render must not blank the rest of the sidebar — renderThreads
+ * awaits this per comment in a loop with no isolation of its own, so a bare
+ * throw here would abort every anchor after it too.
+ */
 async function renderComment(app: App, host: HTMLElement, body: string): Promise<void> {
   const mount = document.createElement('div');
   mount.className = 'comment-body';
   host.appendChild(mount);
-  const ed = await createEditor(mount, body, { editable: false });
-  app.commentEditors.push(ed);
+  try {
+    const ed = await createEditor(mount, body, { editable: false });
+    app.commentEditors.push(ed);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('comment failed to render', err);
+    mount.classList.add('comment-render-error');
+    mount.textContent = 'This comment could not be displayed.';
+  }
 }
 
 /**
