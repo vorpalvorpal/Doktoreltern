@@ -92,6 +92,25 @@ pulls the latest committed doc; "Save draft" writes `doc.md` to disk *without*
 committing or touching `turn.xml` — it lets the human bank edits across several
 sittings before one real "Hand to Claude" turn.
 
+**Keep the server alive across sleep.** `npm run dev` launched as a throwaway
+background job dies when the machine sleeps (or the launching session drops), and
+a *restart* is what discards in-flight work. Run it as a durable, self-owned
+process instead — a real Terminal window, or `nohup npm run dev >/tmp/docloop.log
+2>&1 &`, or `pm2 start "npm run dev" --name docloop`. macOS then *suspends* and
+resumes the same process on sleep/wake, so the browser reconnects to it with no
+full reload and nothing is lost. Do **not** use `caffeinate` — that stops the
+machine sleeping, which isn't the goal.
+
+**Unsaved-edit safety net (localStorage).** The editor autosaves the live doc to
+the browser's `localStorage` on every edit and right before any reload, keyed per
+doc (`src/draft-store.ts`). If the page reloads (dev-server restart, accidental
+refresh, tab crash) your edits are restored on next load with a "Restored unsaved
+edits" bar (Discard to revert). This covers the doc text *and* keeps comment
+anchors consistent with the already-persisted thread bodies. Caveat: it does
+**not** cover edits made while the server is *fully down* — the doc survives in the
+browser, but new comments can't POST to a dead server, so comment only with the
+server up.
+
 **Only "Hand to Claude" is a real turn boundary.** If you're picking up a turn,
 the human is expected to have clicked that, not just Save draft. A dangling
 uncommitted draft left on disk gets folded silently into whatever you `git add

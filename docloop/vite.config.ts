@@ -202,7 +202,7 @@ function docloopEndpoints(): Plugin {
             const baselineIso = await git('show', '-s', '--format=%ct', 'HEAD~1')
               .then(({ stdout }) => new Date(Number(stdout.trim()) * 1000).toISOString())
               .catch(() => null);
-            send(res, 200, { ok: true, present: true, current, baseline, baselineIso });
+            send(res, 200, { ok: true, present: true, name: docName, current, baseline, baselineIso });
           } catch (err) {
             send(res, 500, { ok: false, error: String(err) });
           }
@@ -299,4 +299,12 @@ function docloopEndpoints(): Plugin {
   };
 }
 
-export default defineConfig({ plugins: [docloopEndpoints()] });
+export default defineConfig({
+  plugins: [docloopEndpoints()],
+  // The reviewed doc + sidecar store live under workspace/, which sits inside
+  // this Vite root. They are read on demand via the /doc + /threads endpoints,
+  // never imported into the module graph — so watching them buys nothing and
+  // only risks a spurious full page reload (which would wipe the human's
+  // in-memory edits) each time Claude writes a turn or /commit rewrites the doc.
+  server: { watch: { ignored: ['**/workspace/**'] } },
+});
