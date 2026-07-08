@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "serve": "vite build && vite-node scripts/server.ts",
     "canonicalize": "vite-node scripts/canonicalize.ts",
     "thread": "vite-node scripts/thread.ts",
     "lint-turn": "vite-node scripts/lint-turn.ts",
