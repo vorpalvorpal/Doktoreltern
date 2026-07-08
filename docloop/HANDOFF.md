@@ -85,21 +85,35 @@ canonical — the whole point of the loop is honest, low-noise diffs.
 
 ## Running the GUI (the human's side)
 
-From `docloop/`: `npm run dev`, then open the printed URL (default
-`http://localhost:5173`). Not needed to take a turn, but useful for seeing the
-state. "Hand to Claude" commits the human's turn and writes `turn.xml`; "Reload"
-pulls the latest committed doc; "Save draft" writes `doc.md` to disk *without*
+Two ways to run it, from `docloop/`:
+
+- **`npm run serve`** — the durable, HMR-free runtime for actually *using*
+  docloop day to day. Builds the SPA once (`vite build`) and serves it, plus
+  the same API endpoints, off a plain `http.createServer`
+  (`scripts/server.ts`) with no Vite dev server underneath. Nothing about it
+  is restart-fragile: there's no HMR to force a reload and lose in-memory
+  edits, and it isn't tied to the lifetime of the session that launched it.
+  Prefer this unless you're editing docloop's own source.
+- **`npm run dev`** — the Vite dev server, for hacking on docloop's own
+  source (HMR, instant rebuilds). Not needed to take a turn or to review as a
+  human; use `npm run serve` for that instead.
+
+Either way, open the printed URL (default `http://localhost:5173`). "Hand to
+Claude" commits the human's turn and writes `turn.xml`; "Reload" pulls the
+latest committed doc; "Save draft" writes `doc.md` to disk *without*
 committing or touching `turn.xml` — it lets the human bank edits across several
 sittings before one real "Hand to Claude" turn.
 
-**Keep the server alive across sleep.** `npm run dev` launched as a throwaway
+**Keep the server alive across sleep.** A server launched as a throwaway
 background job dies when the machine sleeps (or the launching session drops), and
-a *restart* is what discards in-flight work. Run it as a durable, self-owned
-process instead — a real Terminal window, or `nohup npm run dev >/tmp/docloop.log
-2>&1 &`, or `pm2 start "npm run dev" --name docloop`. macOS then *suspends* and
-resumes the same process on sleep/wake, so the browser reconnects to it with no
-full reload and nothing is lost. Do **not** use `caffeinate` — that stops the
-machine sleeping, which isn't the goal.
+a *restart* is what discards in-flight work. `npm run serve` already sidesteps
+the HMR/reload half of this problem, but still run it as a durable, self-owned
+process for the same reason — a real Terminal window, or `nohup npm run serve
+>/tmp/docloop.log 2>&1 &`, or `pm2 start "npm run serve" --name docloop` (swap in
+`npm run dev` in either command if you're hacking on docloop itself). macOS then
+*suspends* and resumes the same process on sleep/wake, so the browser reconnects
+to it with no full reload and nothing is lost. Do **not** use `caffeinate` — that
+stops the machine sleeping, which isn't the goal.
 
 **Unsaved-edit safety net (localStorage).** The editor autosaves the live doc to
 the browser's `localStorage` on every edit and right before any reload, keyed per
