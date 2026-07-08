@@ -51,6 +51,7 @@ import { OLD_MD, NEW_MD, SAMPLE_THREADS } from './sample';
 import { createSerialQueue } from './serial-queue';
 import { fetchSkills, runSkill, type SkillMeta } from './skills-client';
 import { slashMenuPlugin } from './slash-menu-plugin';
+import { loadDraft, saveDraft, clearDraft } from './draft-store';
 
 /** Mutable app state: the editor, the diff baseline, and the cached store. */
 interface App {
@@ -96,6 +97,13 @@ interface App {
   draftSeq: Map<string, number>;
   /** The docloop plugin's skill roster, fetched once at startup — the slash-trigger dropdown's source list. */
   skillCommands: SkillMeta[];
+  /**
+   * Client-side unsaved-edit safety net (see draft-store.ts). `name` keys the
+   * localStorage draft per doc; `base` is the last server-persisted markdown the
+   * autosave diffs against (updated on load, Reload, and a successful
+   * Save/Commit). null on the bundled sample (no server → nothing to protect).
+   */
+  draft: { name: string; base: string } | null;
 }
 
 /**
@@ -107,6 +115,7 @@ interface App {
  * common cause (Vite doesn't hot-reload `vite.config.ts` plugin edits).
  */
 async function loadState(): Promise<{
+  name: string | null;
   current: string;
   baseline: string;
   baselineIso: string | null;
@@ -117,6 +126,7 @@ async function loadState(): Promise<{
     const json = (await res.json()) as {
       ok: boolean;
       present?: boolean;
+      name?: string;
       current?: string;
       baseline?: string | null;
       baselineIso?: string | null;
@@ -124,6 +134,7 @@ async function loadState(): Promise<{
     if (json.ok && json.present && typeof json.current === 'string') {
       // No prior commit -> baseline == current, so nothing diffs (correct).
       return {
+        name: json.name ?? null,
         current: json.current,
         baseline: json.baseline ?? json.current,
         baselineIso: json.baselineIso ?? null,
@@ -133,7 +144,57 @@ async function loadState(): Promise<{
   } catch {
     // No dev server / endpoint — fall through to the sample.
   }
-  return { current: NEW_MD, baseline: OLD_MD, baselineIso: null, isSample: true };
+  return { name: null, current: NEW_MD, baseline: OLD_MD, baselineIso: null, isSample: true };
+}
+
+/**
+ * Persist the live doc to localStorage — the unsaved-edit safety net
+ * (draft-store.ts). No-op offline (no `app.draft`). Called on a debounce while
+ * editing and, crucially, on `beforeunload` (which fires even for Vite's own
+ * `location.reload()` when it restarts the dev server), so the exact pre-reload
+ * state is captured and can be restored instead of silently lost.
+ */
+function autosaveDraft(app: App): void {
+  if (!app.draft) return;
+  saveDraft(window.localStorage, app.draft.name, app.draft.base, currentMarkdown(app.ed));
+}
+
+/**
+ * Mark the current doc as durably persisted: move the autosave baseline to `md`
+ * and drop the stored draft. Called on load, on Reload, and after a successful
+ * Save-draft / Commit — anything meaning "disk now matches (or supersedes) the
+ * editor", so there is no longer an unsaved edit to protect.
+ */
+function markPersisted(app: App, md: string): void {
+  if (!app.draft) return;
+  app.draft.base = md;
+  clearDraft(window.localStorage, app.draft.name);
+}
+
+/** Trailing debounce: coalesce a burst of keystrokes into one autosave. */
+function debounce(fn: () => void, ms: number): () => void {
+  let timer: number | undefined;
+  return () => {
+    if (timer !== undefined) window.clearTimeout(timer);
+    timer = window.setTimeout(fn, ms);
+  };
+}
+
+/**
+ * Reveal the "unsaved draft restored" bar and wire its Discard button, which
+ * reverts the editor to the server doc and drops the stored draft. Keeping the
+ * draft is the default (do nothing — it stays live and re-autosaves).
+ */
+function wireDraftBanner(app: App): void {
+  document.getElementById('draft-banner')?.toggleAttribute('hidden', false);
+  document.getElementById('draft-discard')?.addEventListener('click', () => {
+    if (app.draft) {
+      loadMarkdown(app.ed, app.draft.base);
+      clearDraft(window.localStorage, app.draft.name);
+    }
+    document.getElementById('draft-banner')?.toggleAttribute('hidden', true);
+    void rerender(app);
+  });
 }
 
 /** Show/hide the "showing the bundled sample" banner (see index.html). */
@@ -161,7 +222,7 @@ async function main(): Promise<void> {
     throw new Error('missing #editor / #threads');
   }
 
-  const { current, baseline, baselineIso, isSample } = await loadState();
+  const { name, current, baseline, baselineIso, isSample } = await loadState();
   const { threads, usingStore } = await loadThreads();
   const skillCommands = await fetchSkills();
   setSampleBannerVisible(isSample);
@@ -187,7 +248,31 @@ async function main(): Promise<void> {
     composeEditor: null,
     draftSeq: new Map(),
     skillCommands,
+    draft: !isSample && name ? { name, base: current } : null,
   };
+
+  // Unsaved-edit safety net (draft-store.ts): the editor is otherwise
+  // memory-only, so a full reload — Vite restarting the dev server after a
+  // laptop sleep, an accidental refresh, a tab crash — would silently discard
+  // in-memory edits. Restore any draft a prior session left (offering Discard),
+  // then autosave on edits and, decisively, right before any unload.
+  if (app.draft) {
+    const restored = loadDraft(window.localStorage, app.draft.name, current);
+    if (restored !== null) {
+      loadMarkdown(app.ed, restored);
+      wireDraftBanner(app);
+    }
+    const scheduleSave = debounce(() => autosaveDraft(app), 800);
+    ed.view.dom.addEventListener('input', scheduleSave);
+    ed.view.dom.addEventListener('keyup', scheduleSave);
+    // mouseup catches a highlight→comment anchor addition (which changes the doc
+    // with no keystroke); beforeunload below is the ultimate backstop.
+    ed.view.dom.addEventListener('mouseup', scheduleSave);
+    // beforeunload fires even on Vite's programmatic location.reload(), so it
+    // captures the exact pre-reload state; the debounced saves are the backup
+    // for a hard crash where beforeunload never runs.
+    window.addEventListener('beforeunload', () => autosaveDraft(app));
+  }
 
   // Highlighting a span auto-anchors a new thread on it (see autoAnchorFromSelection).
   ed.view.dom.addEventListener('mouseup', () => autoAnchorFromSelection(app));
@@ -209,6 +294,9 @@ async function main(): Promise<void> {
         const next = await loadState();
         setSampleBannerVisible(next.isSample);
         loadMarkdown(app.ed, next.current);
+        // Pulled a fresh committed doc: it's the new autosave baseline, and any
+        // draft against the OLD base is now stale — drop it.
+        markPersisted(app, next.current);
         app.baselineMd = next.baseline;
         app.baselineIso = next.baselineIso;
         if (app.usingStore) app.threads = await fetchThreads();
@@ -388,6 +476,8 @@ function wireCommit(app: App, btn: HTMLButtonElement): void {
         : json.committed
           ? `Committed ${json.commit}`
           : 'No changes';
+      // The doc we just sent is now on disk — clear the unsaved-edit safety net.
+      if (json.ok) markPersisted(app, currentMarkdown(app.ed));
     } catch {
       btn.textContent = 'Commit failed';
     } finally {
@@ -416,6 +506,8 @@ function wireSaveDraft(app: App, btn: HTMLButtonElement): void {
       const res = await fetch('/save-draft', { method: 'POST', body: currentMarkdown(app.ed) });
       const json = (await res.json()) as { ok: boolean };
       btn.textContent = json.ok ? 'Saved' : 'Save failed';
+      // Draft is on disk now — clear the localStorage safety net for it.
+      if (json.ok) markPersisted(app, currentMarkdown(app.ed));
     } catch {
       btn.textContent = 'Save failed';
     } finally {
