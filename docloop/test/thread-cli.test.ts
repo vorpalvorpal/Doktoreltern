@@ -86,7 +86,9 @@ describe('replyThread', () => {
 });
 
 describe('resolveThreadCmd', () => {
-  it('unwraps the anchor to plain text and deletes the thread directory', async () => {
+  // C0 (spec decision 9): resolving marks the thread (`resolved.md`) rather
+  // than deleting its directory — the store keeps the reasoning.
+  it('unwraps the anchor to plain text and marks the thread resolved (directory survives)', async () => {
     await writeDoc('A :mark[flagged text]{#t1} here.\n');
     await replyThread(paths, 't1', 'rjs', 'note');
 
@@ -96,6 +98,8 @@ describe('resolveThreadCmd', () => {
     expect(doc).not.toContain('{#t1}');
     expect(doc).toContain('flagged text');
     expect(extractAnchors(doc)).toEqual([]);
-    expect(await listThreads(paths.threadsDir)).toEqual([]);
+    const threads = await listThreads(paths.threadsDir);
+    expect(threads).toHaveLength(1);
+    expect(threads[0].resolved).toBeTruthy();
   });
 });

@@ -1,0 +1,18 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`dl agenda — golden output (B5) > golden snapshot of a scripted two-human-turn scenario 1`] = `
+"# agenda (since 3428f59 "model turn", 2 human turns folded)
+
+## design.md  (now @8fd6bdde)
+### prose changes
+[1] under "Design":
+  old: Design alpha original.
+  new: Design alpha EDITED again as a draft.
+
+## plan.md  (now @212b6323)
+### prose changes
+[1] under "Plan":
+  old: Plan alpha original.
+  new: Plan alpha EDITED by human.
+"
+`;

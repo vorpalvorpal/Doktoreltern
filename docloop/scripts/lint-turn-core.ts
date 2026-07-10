@@ -48,8 +48,12 @@ export async function lintTurn(paths: LintPaths): Promise<LintIssue[]> {
   }
 
   for (const t of threads) {
-    if (!anchorIds.has(t.id)) {
-      issues.push({ level: 'ERROR', message: `thread ${t.id}/ is orphaned (resolve should have deleted it)` });
+    const anchored = anchorIds.has(t.id);
+    if (!anchored && !t.resolved) {
+      issues.push({ level: 'ERROR', message: `thread ${t.id}/ is orphaned (no live anchor and no resolved marker)` });
+    }
+    if (anchored && t.resolved) {
+      issues.push({ level: 'ERROR', message: `thread ${t.id}/ has a resolved marker but its anchor is still live` });
     }
     for (const c of t.comments) {
       const malformed = !c.author || Number.isNaN(Date.parse(c.created));

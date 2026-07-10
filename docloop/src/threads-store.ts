@@ -35,7 +35,7 @@
  * or stray non-`NNNN.md` files so the store degrades gracefully.
  */
 
-import { mkdir, readdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { nextThreadId } from './threads';
 
@@ -52,10 +52,24 @@ export interface Comment {
   body: string;
 }
 
+/**
+ * A resolved thread's marker (spec decision 9): resolving no longer deletes
+ * the thread directory — it writes `threads/<id>/resolved.md` instead, same
+ * frontmatter shape as a comment (`author`/`created`), body = an optional
+ * note. Reasoning survives as first-class data.
+ */
+export interface ResolvedMarker {
+  author: string;
+  created: string;
+  note: string;
+}
+
 /** A thread: its id (directory name) and its comments, sorted by `seq`. */
 export interface Thread {
   id: string;
   comments: Comment[];
+  /** Present iff `threads/<id>/resolved.md` exists; undefined for a live thread. */
+  resolved?: ResolvedMarker;
 }
 
 /** Matches a `t<N>` id and captures the numeric suffix. */
@@ -133,6 +147,18 @@ async function readComments(dir: string): Promise<Comment[]> {
   return comments;
 }
 
+/** Read `resolved.md` (comment-shaped frontmatter) if present, else undefined. */
+async function readResolvedMarker(dir: string): Promise<ResolvedMarker | undefined> {
+  try {
+    const text = await readFile(join(dir, 'resolved.md'), 'utf8');
+    const parsed = parseComment(0, text);
+    return { author: parsed.author, created: parsed.created, note: parsed.body };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw err;
+  }
+}
+
 /**
  * Read one thread by id, or `null` if its directory doesn't exist. A missing
  * directory surfaces as ENOENT from `readdir`, which we treat as "no such
@@ -142,7 +168,8 @@ export async function readThread(baseDir: string, id: string): Promise<Thread | 
   const dir = join(baseDir, id);
   try {
     const comments = await readComments(dir);
-    return { id, comments };
+    const resolved = await readResolvedMarker(dir);
+    return resolved ? { id, comments, resolved } : { id, comments };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw err;
@@ -166,8 +193,10 @@ export async function listThreads(baseDir: string): Promise<Thread[]> {
   const ids = entries.filter((e) => e.isDirectory()).map((e) => e.name).sort(compareIds);
   const threads: Thread[] = [];
   for (const id of ids) {
-    const comments = await readComments(join(baseDir, id));
-    threads.push({ id, comments });
+    const dir = join(baseDir, id);
+    const comments = await readComments(dir);
+    const resolved = await readResolvedMarker(dir);
+    threads.push(resolved ? { id, comments, resolved } : { id, comments });
   }
   return threads;
 }
@@ -224,10 +253,25 @@ export async function updateComment(
 }
 
 /**
- * Resolve a thread by deleting its directory and all its comment files. A no-op
- * if the thread isn't there (`force: true` swallows ENOENT), so resolving an
- * already-resolved id is safe.
+ * Resolve a thread (spec decision 9): write `threads/<id>/resolved.md`
+ * instead of deleting the directory, so the reasoning survives on disk and
+ * in the `resolved` field `listThreads`/`readThread` report. Creates the
+ * thread directory first if it doesn't exist yet (resolving an anchor whose
+ * store was never written still records the resolution). Idempotent-ish:
+ * resolving an already-resolved id overwrites the marker — last resolution
+ * wins.
  */
-export async function resolveThread(baseDir: string, id: string): Promise<void> {
-  await rm(join(baseDir, id), { recursive: true, force: true });
+export async function resolveThread(
+  baseDir: string,
+  id: string,
+  opts: { author: string; note?: string },
+): Promise<void> {
+  const dir = join(baseDir, id);
+  await mkdir(dir, { recursive: true });
+  const marker = serializeComment({
+    author: opts.author,
+    created: new Date().toISOString(),
+    body: opts.note ?? '',
+  });
+  await writeFile(join(dir, 'resolved.md'), marker, 'utf8');
 }

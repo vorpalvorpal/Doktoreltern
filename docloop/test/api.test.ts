@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { createApi, type ApiConfig } from '../src/api';
+import { canonicalize } from '../scripts/dl/canonical';
 
 // Fresh temp workspace + skillsDir per test, standalone http server on an
 // ephemeral port, driven with fetch — mirrors threads-store.test.ts's
@@ -41,13 +42,15 @@ describe('GET /doc', () => {
   });
 
   it('reflects a save/commit with {present:true, name, current, baseline, baselineIso}', async () => {
+    // C4: /commit canonicalises the body, so the read-back gains (at least) a
+    // trailing newline — compare against the canonical form, not the raw literal.
     await fetch(`${base}/commit`, { method: 'POST', body: '# Hello\n\nworld' });
     const res = await fetch(`${base}/doc`);
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.present).toBe(true);
     expect(body.name).toBe('doc.md');
-    expect(body.current).toBe('# Hello\n\nworld');
+    expect(body.current).toBe(await canonicalize('# Hello\n\nworld'));
     // First-ever commit: no HEAD~1 to diff against.
     expect(body.baseline).toBeNull();
     expect(body.baselineIso).toBeNull();
@@ -58,8 +61,8 @@ describe('GET /doc', () => {
     await fetch(`${base}/commit`, { method: 'POST', body: 'v2' });
     const res = await fetch(`${base}/doc`);
     const body = await res.json();
-    expect(body.current).toBe('v2');
-    expect(body.baseline).toBe('v1');
+    expect(body.current).toBe(await canonicalize('v2'));
+    expect(body.baseline).toBe(await canonicalize('v1'));
     expect(typeof body.baselineIso).toBe('string');
     expect(new Date(body.baselineIso).toISOString()).toBe(body.baselineIso);
   });
@@ -73,7 +76,8 @@ describe('POST /save-draft', () => {
 
     const docRes = await fetch(`${base}/doc`);
     const doc = await docRes.json();
-    expect(doc.current).toBe('draft text');
+    // C4: /save-draft canonicalises too.
+    expect(doc.current).toBe(await canonicalize('draft text'));
     // No commit happened -> still "not present" from git's point of view in the
     // sense that there's no baseline yet (HEAD doesn't exist).
     expect(doc.baseline).toBeNull();
@@ -86,7 +90,7 @@ describe('POST /save-draft', () => {
     const docRes = await fetch(`${base}/doc`);
     const doc = await docRes.json();
     // current reflects the working-tree draft...
-    expect(doc.current).toBe('uncommitted v2');
+    expect(doc.current).toBe(await canonicalize('uncommitted v2'));
     // ...but baseline (HEAD~1) is still absent: there's only ever been ONE commit.
     expect(doc.baseline).toBeNull();
   });
@@ -105,7 +109,7 @@ describe('POST /commit', () => {
 
     const docRes = await fetch(`${base}/doc`);
     const doc = await docRes.json();
-    expect(doc.current).toBe('# Doc\n\nbody text');
+    expect(doc.current).toBe(await canonicalize('# Doc\n\nbody text'));
   });
 
   it('a second identical commit (no changes) returns committed:false', async () => {
@@ -196,7 +200,9 @@ describe('/threads', () => {
     expect(res.status).toBe(400);
   });
 
-  it('DELETE /threads/<id> resolves (deletes) the thread', async () => {
+  // C0 (spec decision 9): DELETE marks the thread resolved rather than
+  // deleting its directory — history survives, `resolved` is populated.
+  it('DELETE /threads/<id> resolves the thread (marks it; history survives)', async () => {
     const first = await fetch(`${base}/threads`, {
       method: 'POST',
       body: JSON.stringify({ author: 'rjs', body: 'to be resolved' }),
@@ -207,7 +213,8 @@ describe('/threads', () => {
     expect(await del.json()).toEqual({ ok: true });
 
     const list = await fetch(`${base}/threads`).then((r) => r.json());
-    expect(list.threads).toEqual([]);
+    expect(list.threads).toHaveLength(1);
+    expect(list.threads[0].resolved).toBeTruthy();
   });
 
   it('DELETE with no id returns 400', async () => {

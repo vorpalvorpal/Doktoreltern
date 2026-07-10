@@ -12,9 +12,10 @@ document and answers the comments; the human reloads and sees Claude's changes a
 a diff with the replies in the margin. It's a deliberately rough **v0** we're
 dogfooding to help co-write the rest of this repo — the "MCP" that would normally
 broker the hand-off is, for now, *hand-simulated by Claude working directly in the
-files*. The document under review lives at `docloop/workspace/doc.md`, which is
-its **own git repo** (separate from the code repo, and gitignored from it) where
-**each commit is one turn**. You don't need the dev server running to take a turn —
+files*. The documents under review are the tracked top-level `*.md` files in
+`docloop/workspace/` (currently `design.md`, `plan.md`, `construct.md`,
+`validate.md`), which is its **own git repo** (separate from the code repo, and
+gitignored from it) where **each commit is one turn**. You don't need the dev server running to take a turn —
 that's the human's GUI; you just work in the files and commit.
 
 ## The pieces
@@ -28,44 +29,53 @@ Comments are stored out-of-line:
   comment is `0001.md`, `0002.md`, … a tiny `author:` / `created:` frontmatter
   block followed by a free-Markdown body.
 - `docloop/workspace/turn.xml` — written by the GUI when the human hands a turn
-  over. **This is what you read.** It has a `<threads>` section (only the threads
-  that *changed this turn* — `status="opened|updated|resolved"`, each carrying its
-  full current comments) and an `<edits>` section (a word-level diff of the prose
-  as `<ins>`/`<del>`, grouped by heading).
+  over. **Superseded as your input by `dl agenda`** (below), which derives the
+  same information — and more — from git; ignore `turn.xml` (it stays GUI-owned
+  working state).
 
-## Your turn
+## Your turn — the `dl` CLI (2026-07-10)
 
-Anchors, comments, and lint checks go through dedicated tools now — never
-hand-author `:mark` directive syntax, thread ids, or comment frontmatter
-yourself (the same principle the GUI itself follows: it wraps a live
-selection rather than letting a human type the directive).
+The whole turn now goes through one tool, `npm run dl --` (spec:
+`docloop/model-api.md`; run from `docloop/`). Never hand-author `:mark`
+directive syntax, thread ids, comment frontmatter, or `git add` lists — the
+CLI owns representation; you own judgement.
 
-1. **Read** `docloop/workspace/turn.xml` — that's the human's delta and the
-   threads waiting on you.
-2. **Edit** `docloop/workspace/doc.md` directly for any requested prose changes.
-3. **Comment** on the human's text by anchoring a span:
-   `npm run thread -- new "<exact span>"` (reply body via stdin), e.g.:
-   ```
-   echo "why this phrasing?" | npm run thread -- new "the exact span to anchor"
-   ```
-   This allocates the next id, applies the anchor via the same function the
-   GUI's own highlight-and-comment action uses, and creates the first comment —
-   printing the assigned id. Errors (rather than guessing) if the span is
-   missing or ambiguous in the doc.
-4. **Reply** to an existing thread: `npm run thread -- reply <id>` (body via
-   stdin).
-5. **Resolve** a thread: `npm run thread -- resolve <id>` — unwraps the anchor
-   back to plain text and deletes `threads/<id>/` in one step.
-6. If you hand-edited `doc.md` prose in step 2, **normalise** it so the diff
-   stays byte-clean: `npm run canonicalize -- workspace/doc.md`. This can now
-   **fail loudly** (nonzero exit, no write) if it detects the normalisation
-   would corrupt the text — if it does, stop and investigate; don't commit
-   around it.
-7. **Lint the turn**: `npm run lint-turn` — must exit 0 before committing (it
-   checks anchors ↔ thread directories ↔ well-formed frontmatter are all
-   consistent).
-8. **Commit** the turn in the workspace repo:
-   `git -C workspace add doc.md threads && git -C workspace commit -m "…"`.
+1. **`dl agenda`** — *the* read. Everything since your last commit, all human
+   turns folded: block-level prose deltas per doc, threads awaiting you (full
+   bodies when changed, one-liners when merely open), human resolutions with
+   notes. If the human left an uncommitted draft, agenda commits it as its own
+   `turn (rjs): recovered draft` first and folds it in. (`dl orient` for a
+   quick whose-turn/what-docs overview.)
+2. **`dl read <doc> [section]`** — numbered blocks + a ref
+   (`design.md@a3f21c4e`). You need this before editing: edits address blocks
+   by ordinal against that ref.
+3. **`dl edit <doc>@<ref>`** — replace/insert/delete blocks, many ops per call
+   on stdin (`@@ replace 4-5` … `@@ insert-after 9` … `@@ delete 12`), applied
+   bottom-up, canonicalised on ingest, stale-ref refused. Carry any inline
+   anchors in your replacement text — that's ordinary editing; a `warn:` tells
+   you if an edit dropped an anchored span (resolve or re-anchor it).
+4. **`dl comment "<span>"`** (body stdin; `--doc`/`--block <doc>@<ref>:<n>` to
+   disambiguate) — allocates the id, anchors the span, opens the thread.
+5. **`dl reply <thread>`** (body stdin) — doc inferred from the thread id.
+6. **`dl resolve <thread> [--note "…"]`** — unwraps the anchor and marks the
+   thread resolved **in place** (`threads/<id>/resolved.md`; nothing is
+   deleted). Use `--note` to concede-and-close without losing the reasoning;
+   the note reaches the human via the turn record.
+7. **`dl check`** — union-aware lint across *all* workspace docs; dry-run of
+   commit.
+8. **`dl commit -m "<subject>"`** — the transactional turn end: validates,
+   stages exactly the right files (never `turn.xml`), commits as the fixed
+   model author with a machine-readable turn record in the commit message.
+   Refuses if anything outside dl's own writes changed mid-turn.
+
+**One-time rollout step (first dl turn only):** the live workspace docs are
+still in the *old* GUI-canonical form, and `dl check` will flag them
+non-canonical (escaping differences only, ~3 lines). Before your first real
+dl turn, land a dedicated reformat commit: canonicalise every tracked doc,
+then `dl commit --allow-manual -m "chore: remark-canonical reformat"` — don't
+mix the reformat into a content turn. Legacy commands (`npm run thread`,
+`canonicalize`, `lint-turn`) still exist but are superseded; don't mix the
+two protocols within one turn.
 
 The human then clicks **Reload** in the GUI and sees your edits diffed against
 their last turn, with your replies in the margin. Keep edits surgical and prose

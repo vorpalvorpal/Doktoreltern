@@ -46,13 +46,15 @@ describe('lintTurn', () => {
     expect(issues).toContainEqual({ level: 'ERROR', message: 'anchor #t1 has no thread directory' });
   });
 
-  it('errors when a thread directory is orphaned (no matching anchor)', async () => {
+  // C0 (spec decision 9): the orphan rule now reads "no live anchor AND no
+  // resolved.md marker" (resolving no longer deletes the directory).
+  it('errors when a thread directory is orphaned (no matching anchor, no resolved marker)', async () => {
     await writeDoc('No anchors here.\n');
     await addComment(paths.threadsDir, 't1', { author: 'rjs', body: 'hi' });
     const issues = await lintTurn(paths);
     expect(issues).toContainEqual({
       level: 'ERROR',
-      message: 'thread t1/ is orphaned (resolve should have deleted it)',
+      message: 'thread t1/ is orphaned (no live anchor and no resolved marker)',
     });
   });
 
@@ -82,7 +84,7 @@ describe('lintTurn', () => {
     expect(issues).toContainEqual({ level: 'ERROR', message: 'anchor #t2 has no thread directory' });
     expect(issues).toContainEqual({
       level: 'ERROR',
-      message: 'thread t3/ is orphaned (resolve should have deleted it)',
+      message: 'thread t3/ is orphaned (no live anchor and no resolved marker)',
     });
     expect(issues).toHaveLength(3);
   });

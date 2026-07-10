@@ -106,9 +106,12 @@ export async function replyThread(
   return addComment(paths.threadsDir, id, { author, body });
 }
 
-/** `thread resolve`: unwrap the anchor back to plain text and delete the store directory. */
+/**
+ * `thread resolve`: unwrap the anchor back to plain text and mark the thread
+ * resolved (spec decision 9: `threads/<id>/resolved.md`, dir survives).
+ */
 export async function resolveThreadCmd(paths: ThreadPaths, id: string): Promise<void> {
   const markdown = readFileSync(paths.docPath, 'utf8');
   writeFileSync(paths.docPath, unwrapAnchor(markdown, id), 'utf8');
-  await storeResolveThread(paths.threadsDir, id);
+  await storeResolveThread(paths.threadsDir, id, { author: 'C' });
 }

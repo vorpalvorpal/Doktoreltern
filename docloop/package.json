@@ -12,6 +12,7 @@
     "canonicalize": "vite-node scripts/canonicalize.ts",
     "thread": "vite-node scripts/thread.ts",
     "lint-turn": "vite-node scripts/lint-turn.ts",
+    "dl": "vite-node scripts/dl.ts --",
     "test": "vitest run"
   },
   "dependencies": {
@@ -27,7 +28,9 @@
     "diff": "^9.0.0",
     "js-yaml": "^5.2.1",
     "remark-directive": "^4.0.0",
+    "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
+    "remark-stringify": "^11.0.0",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.0.0",
     "vfile": "^6.0.0"
