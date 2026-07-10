@@ -170,18 +170,25 @@ describe('readThread', () => {
 });
 
 describe('resolveThread', () => {
-  it('deletes the thread directory so listThreads omits it', async () => {
+  // C0 (spec decision 9, 2026-07-09): resolving now MARKS the thread
+  // (`resolved.md`) instead of deleting the directory — reasoning survives on
+  // disk, and `listThreads` keeps reporting the thread with `resolved` set.
+  it('marks the thread resolved in place; the directory survives and listThreads still reports it', async () => {
     await addComment(base, 't1', { author: 'rjs', body: 'a' });
     await addComment(base, 't2', { author: 'rjs', body: 'b' });
 
-    await resolveThread(base, 't1');
+    await resolveThread(base, 't1', { author: 'rjs', note: 'done' });
 
-    expect(await readThread(base, 't1')).toBeNull();
-    expect((await listThreads(base)).map((t) => t.id)).toEqual(['t2']);
+    const t1 = await readThread(base, 't1');
+    expect(t1).not.toBeNull();
+    expect(t1?.resolved).toBeTruthy();
+    expect((await listThreads(base)).map((t) => t.id)).toEqual(['t1', 't2']);
   });
 
-  it('is a no-op when resolving a missing id', async () => {
-    await expect(resolveThread(base, 't999')).resolves.toBeUndefined();
+  it('resolving a missing id creates the directory and marker (no longer a no-op)', async () => {
+    await resolveThread(base, 't999', { author: 'rjs' });
+    const t = await readThread(base, 't999');
+    expect(t?.resolved).toBeTruthy();
   });
 });
 

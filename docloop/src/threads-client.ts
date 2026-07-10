@@ -57,7 +57,15 @@ export async function updateComment(id: string, seq: number, body: string): Prom
   });
 }
 
-/** DELETE /threads/<id> → resolve (remove) the thread's store directory. */
+/**
+ * DELETE /threads/<id> → resolve the thread: unwraps the anchor server-side
+ * concern is the caller's; this writes the `resolved.md` marker (spec
+ * decision 9) authored by the human side.
+ */
 export async function resolveThread(id: string): Promise<void> {
-  await fetch(`/threads/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  await fetch(`/threads/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ author: 'rjs' }),
+  });
 }

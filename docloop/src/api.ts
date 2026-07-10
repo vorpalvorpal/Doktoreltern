@@ -7,6 +7,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import { renderTurn } from './turn';
 import { listThreads, addComment, updateComment, resolveThread, newThreadId } from './threads-store';
 import { listSkills, readSkillBody } from './skill-frontmatter';
+import { canonicalize } from '../scripts/dl/canonical';
 
 const run = promisify(execFile);
 
@@ -141,7 +142,10 @@ export function createApi(
       void (async () => {
         try {
           await ensureRepo();
-          const newMd = await readBody(req);
+          // Canonicalise BEFORE any write (C4: the external formatter owns
+          // canonical form; a content-guard trip throws here, so nothing is
+          // written and the handler 500s below).
+          const newMd = await canonicalize(await readBody(req));
 
           // Render the turn (human's delta vs the last commit) BEFORE committing,
           // so HEAD still points at the previous version. First commit -> diff
@@ -190,7 +194,7 @@ export function createApi(
       void (async () => {
         try {
           await ensureRepo();
-          const md = await readBody(req);
+          const md = await canonicalize(await readBody(req));
           await writeFile(docPath, md, 'utf8');
           send(res, 200, { ok: true });
         } catch (err) {
@@ -271,7 +275,10 @@ export function createApi(
           }
           if (req.method === 'DELETE') {
             if (!id) return send(res, 400, { ok: false, error: 'missing thread id' });
-            await resolveThread(threadsDir, id);
+            const raw = await readBody(req);
+            const input = raw ? (JSON.parse(raw) as { author?: string; note?: string }) : {};
+            const author = String(input.author ?? 'rjs');
+            await resolveThread(threadsDir, id, { author, note: input.note });
             return send(res, 200, { ok: true });
           }
           return notFound();
