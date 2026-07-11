@@ -66,9 +66,13 @@ lerna-debug.log*
 .cache/
 .pytest_cache/
 
-# Context-layer local stores (disposable; issues are canonical)
-tmp/            # artefact cache (tmp/art) + scratch
-.ctx-transcripts/   # local presentation-text transcripts (spirit-check only)
+# Context-layer local stores (each its own git repo; local-only, like docloop/workspace)
+# The ctx_store node store (canonical post-#60; not tracked by the code repo):
+r-science/context/store/
+# artefact cache (tmp/art) + scratch:
+tmp/
+# local presentation-text transcripts (spirit-check only):
+.ctx-transcripts/
 
 # R
 .Rproj.user
