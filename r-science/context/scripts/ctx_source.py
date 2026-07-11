@@ -1,11 +1,11 @@
-"""RepoSource — adapts a fetched + collated repo into the MCP serving shape.
+"""RepoSource — adapts a read store + collated repo into the MCP serving shape.
 
 The pure serving functions in ``ctx_mcp/server.py`` expect a ``source`` exposing
 ``.nodes`` / ``.registry`` / ``.dead_ends`` in a plain-dict shape (see the tests'
-``FakeSource``). This builds that from ``ctx_fetch.fetch_repo`` + ``ctx_core.collate``.
-``fetch`` and ``collate`` are injectable so it can be tested without a network.
+``FakeSource``). This builds that from ``ctx_store.read_nodes`` + ``ctx_core.collate``.
+``fetch`` and ``collate`` are injectable so it can be tested without touching disk.
 
-The title is the GitHub issue title (``Node.title``), falling back to a ``# <title>``
+The title is the store's node title (``Node.title``), falling back to a ``# <title>``
 heading in the body and then ``#<number>``; the short "purpose" is the first prose
 line of the body. Maps to #41 (context MCP).
 """
@@ -63,11 +63,11 @@ def _purpose(body: str) -> str:
 
 
 class RepoSource:
-    """Live serving source: fetch a repo, collate it, expose the dict shape."""
+    """Live serving source: read the store, collate it, expose the dict shape."""
 
-    def __init__(self, repo: str, *, fetch=None, collate=None) -> None:
-        import ctx_fetch
-        nodes = (fetch or ctx_fetch.fetch_repo)(repo)
+    def __init__(self, store: str, *, fetch=None, collate=None) -> None:
+        import ctx_store
+        nodes = (fetch or ctx_store.read_nodes)(store)
         model = (collate or ctx_core.collate)(nodes)
 
         children: dict = defaultdict(list)

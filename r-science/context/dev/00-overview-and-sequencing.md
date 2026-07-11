@@ -103,3 +103,13 @@ deviation, corrected assumption). This log is a deliverable — Phase 9 reports 
   `_alloc_id` → `_commit` span — an OS-level fault (disk full / kill) between the
   `_next` bump and the commit would leave an uncommitted counter bump + id gap.
   Not reachable by any tested path; revisit if/when concurrency lands.
+- **Stages 2+3 landed + verified:** read path/entrypoints repointed
+  (`RepoSource`/`ctx_lint`/`serve` take a store path; `_detect_repo` gone;
+  `_platform_from` returns an empty vestigial `Platform`); I1/I2 deleted from
+  `CHECKS` (now I3–I13) and 5 I1/I2 test methods removed. Full suite 241 passed /
+  1 skipped; edited files grep-clean of gh/`_detect_repo`. Two worker
+  adjudications **approved**: (a) `_platform_from` gutted in Stage 2 not Stage 3
+  (per the plan's own recommendation); (b) `ctx_lint.main` gained an explicit
+  `.git`-existence check → exit 2 on a nonexistent store, because
+  `ctx_store.read_nodes` returns `[]` (not raises) for a missing dir and R2
+  requires exit 2 there. Verified the exit-2 path end-to-end.

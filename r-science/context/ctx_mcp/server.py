@@ -187,35 +187,11 @@ def build_live_server(make_source, name: str = "ctx-context"):
     return _register(FastMCP(name), make_source)
 
 
-def _detect_repo() -> str:  # pragma: no cover - environment probe
-    """Derive ``owner/repo`` from the local checkout (gh first, then git remote)."""
-    import re
-    import subprocess
-
-    try:
-        out = subprocess.run(
-            ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
-            capture_output=True, text=True,
-        )
-        if out.returncode == 0 and out.stdout.strip():
-            return out.stdout.strip()
-    except FileNotFoundError:
-        pass
-
-    out = subprocess.run(
-        ["git", "remote", "get-url", "origin"], capture_output=True, text=True
-    )
-    m = re.search(r"[:/]([^/:]+/[^/]+?)(?:\.git)?$", out.stdout.strip())
-    if m:
-        return m.group(1)
-    raise SystemExit("could not detect repo; pass owner/repo as an argument")
-
-
-def serve(repo: str | None = None, *, scripts_dir: str | None = None) -> None:  # pragma: no cover - I/O entry
-    """Build a live server over `repo` (auto-detected from git if omitted) and run it on stdio.
+def serve(store: str | None = None, *, scripts_dir: str | None = None) -> None:  # pragma: no cover - I/O entry
+    """Build a live server over `store` (or the `CTX_STORE` env var) and run it on stdio.
 
     The source is rebuilt per tool call, so the served view always reflects the
-    latest issue edits (re-fetch per call, the agreed freshness model).
+    latest node edits (re-read per call, the agreed freshness model).
     """
     import os
     import sys
@@ -225,7 +201,9 @@ def serve(repo: str | None = None, *, scripts_dir: str | None = None) -> None:  
         sys.path.insert(0, sd)
     import ctx_source
 
-    target = repo or _detect_repo()
+    target = store or os.environ.get("CTX_STORE")
+    if target is None:
+        raise SystemExit("no store: pass a path or set CTX_STORE")
     build_live_server(lambda: ctx_source.RepoSource(target)).run()
 
 

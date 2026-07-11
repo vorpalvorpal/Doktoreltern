@@ -1,12 +1,15 @@
-"""Behaviour spec for the linter — invariants I1–I8, exit codes, output format.
+"""Behaviour spec for the linter — invariants I3–I8, exit codes, output format.
 
 Maps to plan §6 "Linter". Each invariant is one named, independently testable
 check exposed as ``ctx_core.CHECKS["I3"](model, platform) -> [Finding]``. The
 CLI wiring (exit codes, finding format) lives in ``ctx_lint``.
 
 Findings carry a severity: "finding" flips the exit code, "warning"/"info" do
-not. I1's best-effort rule (edge unsettable in this environment) and I6's
-depth-7 warning are the two places that distinction is load-bearing.
+not. I6's depth-7 warning is where that distinction is load-bearing.
+
+I1 (Part-of <-> platform sub-issue edge) and I2 (aspect marker <-> aspect:*
+label) were deleted in the store migration (CONTRACT.md A5): both diffed
+in-text markers against GitHub platform state, which no longer exists.
 
 Pending until Stage 4 (linter). The CHECKS themselves are Stage 2 (core).
 """
@@ -37,45 +40,6 @@ def model_and_platform(data):
 
 def severities(findings, level="finding"):
     return [f for f in findings if f.severity == level]
-
-
-# --------------------------------------------------------------------------
-# I1 — Part-of ↔ platform sub-issue edge (best-effort)
-# --------------------------------------------------------------------------
-class TestI1:
-    def test_clean_when_edge_matches_text(self, two_node_tree):
-        model, platform = model_and_platform(two_node_tree)
-        assert ctx_core.CHECKS["I1"](model, platform) == []
-
-    def test_finding_when_edge_missing_and_settable(self, two_node_tree):
-        two_node_tree["subissue_edges"] = set()
-        two_node_tree["settable"] = True
-        model, platform = model_and_platform(two_node_tree)
-        assert severities(ctx_core.CHECKS["I1"](model, platform), "finding")
-
-    def test_info_not_finding_when_edge_unsettable(self, two_node_tree):
-        """Missing edge in an environment that can't set one is info, not failure."""
-        two_node_tree["subissue_edges"] = set()
-        two_node_tree["settable"] = False
-        model, platform = model_and_platform(two_node_tree)
-        result = ctx_core.CHECKS["I1"](model, platform)
-        assert severities(result, "finding") == []
-        assert severities(result, "info")
-
-
-# --------------------------------------------------------------------------
-# I2 — aspect marker ↔ aspect:* label, both directions
-# --------------------------------------------------------------------------
-class TestI2:
-    def test_finding_when_text_aspect_has_no_label(self, two_node_tree):
-        two_node_tree["labels"][17] = set()          # drop aspect:numerics label
-        model, platform = model_and_platform(two_node_tree)
-        assert severities(ctx_core.CHECKS["I2"](model, platform))
-
-    def test_finding_when_label_has_no_text_aspect(self, two_node_tree):
-        two_node_tree["labels"][17] = {"aspect:numerics", "aspect:io"}  # io unmarked
-        model, platform = model_and_platform(two_node_tree)
-        assert severities(ctx_core.CHECKS["I2"](model, platform))
 
 
 # --------------------------------------------------------------------------

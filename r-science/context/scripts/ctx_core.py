@@ -25,7 +25,7 @@ Functions:
     collate(nodes) -> Model
 
 Mapping:
-    CHECKS: dict[str, Callable[[Model, Platform], list[Finding]]]  "I1".."I8"
+    CHECKS: dict[str, Callable[[Model, Platform], list[Finding]]]  "I3".."I13"
 """
 
 from __future__ import annotations
@@ -372,7 +372,12 @@ class Parsed:
 
 @dataclass
 class Platform:
-    """Platform-derived index the linter diffs against in-text markers."""
+    """Platform-derived index the linter diffs against in-text markers.
+
+    Vestigial post-migration (A5/A2): there is no platform anymore, so this is
+    always constructed empty. I3-I9/I12/I13 keep the `(model, platform)`
+    signature but ignore it. Slated for a later cleanup, not this migration.
+    """
     subissue_edges: set   # set of (parent, child) int tuples
     labels: dict          # dict[int, set[str]]
     settable: bool        # whether the platform supports setting sub-issue edges
@@ -870,56 +875,6 @@ def _detect_cycles(model: Model) -> list:
     return in_cycle
 
 
-def _check_i1(model: Model, platform: Platform) -> list:
-    """I1: Part-of marker ↔ platform sub-issue edge.
-
-    Missing edge when settable → finding; when not settable → info.
-    """
-    findings: list = []
-    for parent, child in model.tree_edges:
-        if (parent, child) not in platform.subissue_edges:
-            sev = "finding" if platform.settable else "info"
-            findings.append(Finding(
-                child, "I1",
-                f"Part-of: #{parent} has no matching platform sub-issue edge",
-                severity=sev,
-            ))
-    # Reverse: platform edge with no corresponding Part-of marker.
-    for parent, child in platform.subissue_edges:
-        if (parent, child) not in model.tree_edges:
-            sev = "finding" if platform.settable else "info"
-            findings.append(Finding(
-                child, "I1",
-                f"platform sub-issue edge #{parent}→#{child} has no Part-of marker",
-                severity=sev,
-            ))
-    return findings
-
-
-def _check_i2(model: Model, platform: Platform) -> list:
-    """I2: aspect marker ↔ aspect:* label, both directions."""
-    findings: list = []
-    for issue, node in model.nodes.items():
-        text_aspects = set(model.aspects.get(issue, []))
-        label_aspects = {
-            lbl.split(":", 1)[1]
-            for lbl in platform.labels.get(issue, set())
-            if lbl.startswith("aspect:")
-        }
-
-        for asp in text_aspects - label_aspects:
-            findings.append(Finding(
-                issue, "I2",
-                f"text has 'aspect: {asp}' but no label 'aspect:{asp}'",
-            ))
-        for asp in label_aspects - text_aspects:
-            findings.append(Finding(
-                issue, "I2",
-                f"label 'aspect:{asp}' has no corresponding text marker",
-            ))
-    return findings
-
-
 def _check_i3(model: Model, platform: Platform) -> list:
     """I3: exactly one parent; no cycles."""
     findings: list = []
@@ -1116,8 +1071,6 @@ def _check_i13(model: Model, platform: Platform) -> list:
 # value validity is enforced at parse time, and prose cross-reference scanning is
 # noisy — see context-spec.md §7.
 CHECKS: dict = {
-    "I1": _check_i1,
-    "I2": _check_i2,
     "I3": _check_i3,
     "I4": _check_i4,
     "I5": _check_i5,

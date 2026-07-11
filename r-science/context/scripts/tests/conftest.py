@@ -22,9 +22,15 @@ it does, update these shims, not the assertions):
                                             #  .registry/.dead_ends
         CHECKS: dict[str, Callable[[Model, Platform], list[Finding]]]  "I1".."I8"
 
-    ctx_fetch
-        fetch_repo(repo) -> list[Node];  update_comment(comment_id, body)
-        AuthError, RateLimitError, OperationalError
+    ctx_store
+        read_nodes(store) -> list[Node]
+        read_comments(store, node_id) -> list[Comment]
+        init_store(store) -> None
+        create_node(store, title, body, *, parent=None, labels=None) -> int
+        add_comment(store, node_id, body) -> int
+        update_comment(store, node_id, seq, body) -> None
+        set_state(store, node_id, state, *, state_reason=None, labels=None) -> None
+        StoreError, ValidationError
 
     ctx_lint
         main(argv) -> int   # 0 clean, 1 findings, 2 operational

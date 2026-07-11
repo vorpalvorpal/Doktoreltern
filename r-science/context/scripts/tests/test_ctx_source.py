@@ -6,6 +6,7 @@ import pytest
 
 ctx_core = pytest.importorskip("ctx_core")
 ctx_source = pytest.importorskip("ctx_source")
+ctx_store = pytest.importorskip("ctx_store")
 C = ctx_core
 
 SERVER_PATH = Path(__file__).resolve().parent.parent.parent / "ctx_mcp" / "server.py"
@@ -30,6 +31,27 @@ def _nodes():
 
 def _source():
     return ctx_source.RepoSource("owner/repo", fetch=lambda r: _nodes())
+
+
+class TestOverRealStore:
+    """RepoSource with no injected fetch reads a real ctx_store-backed store."""
+
+    def test_default_fetch_reads_the_local_store(self, tmp_path):
+        store_dir = tmp_path / "store"
+        ctx_store.init_store(str(store_dir))
+        parent = ctx_store.create_node(str(store_dir), "Epic", "# Epic\nThe whole epic.\n")
+        child = ctx_store.create_node(
+            str(store_dir), "Design node",
+            f"# Design node\n🧩 Part-of: #{parent}\nOne design slice.\n",
+            parent=parent,
+        )
+        ctx_store.add_comment(str(store_dir), parent, "c16")
+
+        src = ctx_source.RepoSource(str(store_dir))
+        assert src.nodes[child]["parent"] == parent
+        assert src.nodes[parent]["children"] == [child]
+        assert src.nodes[parent]["title"] == "Epic"
+        assert src.nodes[parent]["comments"] == ["c16"]
 
 
 class TestAdapterShape:
