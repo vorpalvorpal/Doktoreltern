@@ -483,6 +483,19 @@ for _entry in _VOCAB:
     _pat = re.compile(r"^[ \t]*" + re.escape(_kw) + r":[ \t]*", re.IGNORECASE)
     _BARE_KW_RE[_kind] = _pat
 
+# Glyph-led drift guard: a known marker glyph as the first non-whitespace token,
+# followed by a keyword-like token and a colon (same FE0F-optional handling as
+# _MARKER_RE). This is the marker *shape* `glyph keyword:` — so a line matching it
+# but matching no _MARKER_RE entry is an attempted marker with the WRONG keyword
+# (the observed `⚖️ alt:` drift) and must surface as a Finding, not vanish as inert
+# text. The `keyword:` requirement is deliberate: it distinguishes a drifted marker
+# from decorative/rhetorical prose that merely starts with a vocab glyph
+# (`✅ done the dishes`, `❓ why so slow?`), which stays inert as before.
+_GLYPH_LED_RE = re.compile(
+    r"^[ \t]*(?:" + "|".join(re.escape(_g) + r"️?" for _g, *_ in _VOCAB) + r")"
+    r"[ \t]*[\w-]+:"
+)
+
 
 
 def _consume_blockquote(lines: list, i: int) -> tuple:
@@ -591,6 +604,16 @@ def parse(text: str) -> Parsed:
             break
 
         if not matched:
+            # A known marker glyph led the line but no vocab regex matched: the
+            # keyword is wrong/missing or the line is malformed. Surface it rather
+            # than silently passing it through as inert prose (regression guard).
+            if _GLYPH_LED_RE.match(raw_line):
+                findings.append(Finding(
+                    0, "parse",
+                    f"emoji-led marker line not recognised (keyword mismatch or "
+                    f"malformed): {raw_line.strip()!r}",
+                    line=lineno,
+                ))
             i += 1
 
     return Parsed(markers=markers, findings=findings)

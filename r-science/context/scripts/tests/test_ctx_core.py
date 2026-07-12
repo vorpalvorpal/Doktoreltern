@@ -207,6 +207,82 @@ class TestCoreRobustness:
 
 
 # --------------------------------------------------------------------------
+# Glyph-led marker drift — a correct glyph with a wrong/missing keyword must
+# NOT be silently dropped (regression: a whole node's ⚖️/🎯/✅ markers vanished).
+# --------------------------------------------------------------------------
+class TestGlyphLedDrift:
+    def test_wrong_keyword_alt_fires_finding(self):
+        """`⚖️ alt:` (glyph ok, keyword should be `Alternative`) → finding, no marker."""
+        parsed = ctx_core.parse("⚖️ alt: #3.alt1 IA — viable\n")
+        assert parsed.markers == []
+        assert len(parsed.findings) == 1
+        assert parsed.findings[0].key == "parse"
+        assert parsed.findings[0].line == 1
+
+    def test_wrong_keyword_fd_and_v_fire_findings(self):
+        """`🎯 fd:` and `✅ v:` are the same drift class — each fires a finding."""
+        fd = ctx_core.parse("🎯 fd: #3.fd1 declared do the thing\n")
+        v = ctx_core.parse("✅ v: #3.v1 met checked out\n")
+        assert fd.markers == [] and len(fd.findings) == 1
+        assert v.markers == [] and len(v.findings) == 1
+
+    def test_correct_alternative_keyword_parses_with_no_new_finding(self):
+        """The canonical `⚖️ Alternative:` still parses to a Marker, no finding."""
+        parsed = ctx_core.parse("⚖️ Alternative: #3.alt1 IA — viable\n")
+        assert parsed.findings == []
+        assert len(parsed.markers) == 1
+        assert parsed.markers[0].kind == ctx_core.ALTERNATIVE
+
+    def test_enum_value_failure_still_fires_exactly_one_finding(self):
+        """`🧭 Confidence: medium`: keyword matches, value fails enum → exactly one
+        finding. The new glyph-led guard must NOT double-fire on an already-matched line."""
+        parsed = ctx_core.parse("🧭 Confidence: medium\n")
+        assert parsed.markers == []
+        assert len(parsed.findings) == 1
+
+    def test_non_marker_leading_emoji_is_left_as_prose(self):
+        """A leading NON-marker emoji is ordinary prose — no finding, no marker."""
+        parsed = ctx_core.parse("🔥 hot take here\n")
+        assert parsed.markers == []
+        assert parsed.findings == []
+
+    def test_glyph_led_line_suppressed_in_fence_and_blockquote(self):
+        """Fence/blockquote suppression sits ahead of the new guard — no finding."""
+        fenced = ctx_core.parse("```\n⚖️ alt: #3.alt1 IA\n```\n")
+        assert fenced.markers == [] and fenced.findings == []
+        quoted = ctx_core.parse("> ⚖️ alt: #3.alt1 IA\n> quoted prose\n")
+        assert quoted.markers == [] and quoted.findings == []
+
+    def test_glyph_mid_sentence_does_not_fire(self):
+        """The glyph must be the first non-whitespace token; mid-sentence is prose."""
+        parsed = ctx_core.parse("see ⚖️ Alternative: above\n")
+        assert parsed.markers == []
+        assert parsed.findings == []
+
+    def test_bare_glyph_alone_stays_inert(self):
+        """A bare glyph (no `keyword:` shape) is not attempted-marker drift → inert.
+
+        The guard fires on the marker *shape* `glyph keyword:`, not on any glyph —
+        so a lone glyph or a glyph with no colon is left as prose, not flagged.
+        """
+        bare = ctx_core.parse("⚖️\n")
+        assert bare.markers == [] and bare.findings == []
+        trailing = ctx_core.parse("⚖️ \n")
+        assert trailing.markers == [] and trailing.findings == []
+
+    def test_decorative_glyph_prose_does_not_fire(self):
+        """Rhetorical/decorative use of a vocab glyph (no `keyword:` shape) stays
+        inert — the drift guard must not cry wolf on ordinary prose that happens to
+        open with ✅/❓/🔒. (Preserves the documented behaviour of
+        `test_bare_emoji_without_keyword_does_not_register`.)"""
+        for line in ("✅ done the dishes\n", "❓ why is this so slow?\n",
+                     "🔒 the door is locked\n"):
+            parsed = ctx_core.parse(line)
+            assert parsed.markers == [], line
+            assert parsed.findings == [], line
+
+
+# --------------------------------------------------------------------------
 # Collation → indices
 # --------------------------------------------------------------------------
 class TestCollate:
