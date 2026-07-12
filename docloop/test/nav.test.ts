@@ -64,7 +64,8 @@ describe('renderDocList', () => {
       i.textContent?.includes('design.md'),
     );
     design?.click();
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith('design.md');
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith('design.md');
   });
 
   it('clicking the active item is a no-op', () => {

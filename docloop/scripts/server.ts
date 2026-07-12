@@ -14,18 +14,25 @@
  * Env:
  *   DOCLOOP_DOC   — the tracked doc under review (default `doc.md`), same
  *                   knob as the dev server / CLI scripts.
+ *   DOCLOOP_NODES — path (absolute or cwd-relative) to a ctx node store for
+ *                   the left nav's node tree (GET /nodes); unset = no store.
  *   PORT          — default 5173. NEVER point this at the human's live dev
  *                   server port while it's running one of its own.
  */
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { join, extname, normalize, sep } from 'node:path';
+import { join, extname, normalize, resolve, sep } from 'node:path';
 import { createApi, type ApiConfig } from '../src/api';
 
 const workspace = join(process.cwd(), 'workspace');
 const docName = process.env.DOCLOOP_DOC ?? 'doc.md';
 const skillsDir = join(process.cwd(), 'skills');
-const cfg: ApiConfig = { workspace, docName, skillsDir };
+// The ctx node store for the left nav's node tree (GET /nodes) — optional;
+// absolute or cwd-relative. Unset = no store, and the GUI hides the section.
+const nodesDir = process.env.DOCLOOP_NODES
+  ? resolve(process.cwd(), process.env.DOCLOOP_NODES)
+  : undefined;
+const cfg: ApiConfig = { workspace, docName, skillsDir, nodesDir };
 const api = createApi(cfg);
 
 const distDir = join(process.cwd(), 'dist');
@@ -35,7 +42,16 @@ const port = Number(process.env.PORT ?? 5173);
 // SPA handler below. Kept as simple prefix checks mirroring src/api.ts's own
 // dispatch (which also 404s internally on an unmatched method/path when there
 // is no `next`).
-const API_PATHS = ['/commit', '/save-draft', '/doc', '/threads', '/docloop-skills', '/run-skill'];
+const API_PATHS = [
+  '/commit',
+  '/save-draft',
+  '/doc',
+  '/docs',
+  '/nodes',
+  '/threads',
+  '/docloop-skills',
+  '/run-skill',
+];
 function isApiRequest(pathname: string): boolean {
   return API_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
