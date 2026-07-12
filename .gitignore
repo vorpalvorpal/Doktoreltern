@@ -114,3 +114,6 @@ npm-debug.log
 yarn-error.log
 package-lock.json
 yarn.lock
+
+# Walking-skeleton dogfood (its own git repo; local-only like the ctx store)
+docloop/dogfood/
