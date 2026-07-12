@@ -36,6 +36,19 @@
       version.
     </div>
     <main class="layout">
+      <!-- Left nav: the workspace's reviewable docs (click to switch the
+           editor) + the read-only ctx node-tree seam, hidden unless the
+           server is configured with a store (see main.ts initNav). -->
+      <nav id="nav" class="nav">
+        <section id="nav-nodes" hidden>
+          <h2 class="nav-heading">Nodes</h2>
+          <ul id="node-tree" class="node-tree"></ul>
+        </section>
+        <section id="nav-docs">
+          <h2 class="nav-heading">Docs</h2>
+          <ul id="doc-list" class="doc-list"></ul>
+        </section>
+      </nav>
       <!-- Milkdown mounts here -->
       <section id="editor" class="doc"></section>
       <!-- Margin gutter: comment threads AND change-approval cards, each card

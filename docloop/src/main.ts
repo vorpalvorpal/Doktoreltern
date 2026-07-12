@@ -18,7 +18,10 @@
  *     draft comment in place (or creates it, or abandons the anchor if left
  *     empty with nothing else behind it) until Save-draft/Commit seals it —
  *     see {@link deactivateCompose} / {@link sealDrafts},
- *   - a "Changes" panel listing each diff hunk with Accept / Reject controls.
+ *   - a "Changes" panel listing each diff hunk with Accept / Reject controls,
+ *   - a left nav (src/nav.ts + src/docs-client.ts): the workspace's reviewable
+ *     docs (clicking one switches the editor via {@link switchDoc}) and the
+ *     read-only ctx node-tree seam (hidden unless the server has a store).
  *
  * Document mutations go through the M0 serialise→transform→reload path; comment
  * mutations go through the `/threads` endpoints (src/threads-client.ts), with an
@@ -52,10 +55,20 @@ import { createSerialQueue } from './serial-queue';
 import { fetchSkills, runSkill, type SkillMeta } from './skills-client';
 import { slashMenuPlugin } from './slash-menu-plugin';
 import { loadDraft, saveDraft, clearDraft } from './draft-store';
+import { fetchDocs, fetchNodes, type DocInfo } from './docs-client';
+import { renderDocList, renderNodeTree } from './nav';
 
 /** Mutable app state: the editor, the diff baseline, and the cached store. */
 interface App {
   ed: DocloopEditor;
+  /**
+   * The doc the editor is currently reviewing (from the initial `/doc`
+   * response's `name`, then updated by {@link switchDoc}). Reload, Commit and
+   * Save-draft all target this doc via `?doc=`.
+   */
+  docName: string;
+  /** The workspace's reviewable docs, cached from `GET /docs` for the left nav. */
+  docs: DocInfo[];
   baselineMd: string;
   /** comment store, cached from `/threads` (or SAMPLE_THREADS offline) */
   threads: StoreThread[];
@@ -114,7 +127,7 @@ interface App {
  * silently looking like the real document — a stale dev-server process is a
  * common cause (Vite doesn't hot-reload `vite.config.ts` plugin edits).
  */
-async function loadState(): Promise<{
+async function loadState(name?: string): Promise<{
   name: string | null;
   current: string;
   baseline: string;
@@ -122,7 +135,9 @@ async function loadState(): Promise<{
   isSample: boolean;
 }> {
   try {
-    const res = await fetch('/doc');
+    // `?doc=` targets a specific doc; absent = the server's configured default
+    // (byte-for-byte today's behaviour — see api.test.ts, the regression gate).
+    const res = await fetch(name ? `/doc?doc=${encodeURIComponent(name)}` : '/doc');
     const json = (await res.json()) as {
       ok: boolean;
       present?: boolean;
@@ -187,7 +202,13 @@ function debounce(fn: () => void, ms: number): () => void {
  */
 function wireDraftBanner(app: App): void {
   document.getElementById('draft-banner')?.toggleAttribute('hidden', false);
-  document.getElementById('draft-discard')?.addEventListener('click', () => {
+  const discard = document.getElementById('draft-discard');
+  // Guard against stacking listeners: this is re-invoked per restored draft
+  // now that switchDoc can restore one per doc switch, not just at startup.
+  // The handler reads `app.draft` live, so one wiring serves every doc.
+  if (!discard || discard.dataset.wired) return;
+  discard.dataset.wired = 'true';
+  discard.addEventListener('click', () => {
     if (app.draft) {
       loadMarkdown(app.ed, app.draft.base);
       clearDraft(window.localStorage, app.draft.name);
@@ -234,6 +255,8 @@ async function main(): Promise<void> {
 
   const app: App = {
     ed,
+    docName: name ?? 'doc.md',
+    docs: [],
     baselineMd: baseline,
     threads,
     usingStore,
@@ -291,7 +314,9 @@ async function main(): Promise<void> {
     reloadBtn.addEventListener('click', async () => {
       reloadBtn.disabled = true;
       try {
-        const next = await loadState();
+        // Reload the doc the editor is on (not the server default — a
+        // switchDoc may have moved us since startup).
+        const next = await loadState(app.docName);
         setSampleBannerVisible(next.isSample);
         loadMarkdown(app.ed, next.current);
         // Pulled a fresh committed doc: it's the new autosave baseline, and any
@@ -303,6 +328,8 @@ async function main(): Promise<void> {
         // Re-seed collapse for the freshly-loaded turn (expand its new threads).
         app.collapseInitialized = false;
         await rerender(app);
+        // Doc states may have flipped (e.g. Claude committed) — refresh the nav.
+        await refreshDocList(app);
       } finally {
         reloadBtn.disabled = false;
       }
@@ -321,11 +348,124 @@ async function main(): Promise<void> {
 
   await rerender(app);
 
+  // Populate the left nav (doc list + node tree) — after the first render so
+  // a nav fetch hiccup can never block the doc itself from appearing.
+  await initNav(app, isSample);
+
   // Re-layout the margin gutter when the doc reflows (typing, wrapping, font
   // load) or the window resizes — anchor positions move, cards must follow.
   // Attached AFTER the first render so the observer can't fire mid-render.
   new ResizeObserver(() => scheduleLayout(app)).observe(ed.view.dom);
   window.addEventListener('resize', () => scheduleLayout(app));
+}
+
+/**
+ * Populate the left nav at startup: the workspace's reviewable docs
+ * (`GET /docs`) and the node-store tree (`GET /nodes`, a seam — hidden
+ * entirely unless the server is configured with a store that exists and has
+ * nodes). Offline/sample mode — either fetch throws, or we're showing the
+ * bundled sample — degrades to the sample doc as a single inert active item,
+ * with the node section left hidden.
+ */
+async function initNav(app: App, isSample: boolean): Promise<void> {
+  const docList = document.getElementById('doc-list');
+  if (!docList) return;
+
+  const showSampleItem = () =>
+    renderDocList(docList, [{ name: 'sample', state: 'clean' }], 'sample', () => {});
+
+  if (isSample) {
+    showSampleItem();
+    return;
+  }
+
+  try {
+    app.docs = (await fetchDocs()).docs;
+    renderDocList(docList, app.docs, app.docName, (n) => void switchDoc(app, n));
+  } catch {
+    showSampleItem();
+    return; // no server — don't bother asking it for nodes either
+  }
+
+  try {
+    const { present, nodes } = await fetchNodes();
+    const nodeTree = document.getElementById('node-tree');
+    if (present && nodes.length > 0 && nodeTree) {
+      renderNodeTree(nodeTree, nodes);
+      document.getElementById('nav-nodes')?.toggleAttribute('hidden', false);
+    }
+  } catch {
+    // Node store unreachable — the section simply stays hidden.
+  }
+}
+
+/**
+ * Re-fetch `/docs` and re-render the doc list — doc states flip clean↔draft
+ * on Commit / Save-draft / Reload, and the active marker moves on switchDoc.
+ * Best-effort: on failure the stale list stays (better than blanking it).
+ */
+async function refreshDocList(app: App): Promise<void> {
+  const docList = document.getElementById('doc-list');
+  if (!docList) return;
+  try {
+    app.docs = (await fetchDocs()).docs;
+  } catch {
+    // keep the cached list
+  }
+  renderDocList(docList, app.docs, app.docName, (n) => void switchDoc(app, n));
+}
+
+/**
+ * Switch the editor to reviewing `name` (no-op when already active) — the
+ * doc-list click handler. In order:
+ *   1. settle any in-flight compose ({@link sealDrafts});
+ *   2. bank the outgoing doc's unsaved edits to its per-doc localStorage slot
+ *      ({@link autosaveDraft} — the draft store is keyed by doc name);
+ *   3. load the new doc's state; on failure (including the sample fallback,
+ *      which means `/doc` errored or reported nothing present) leave the
+ *      current doc in place — no destructive half-switch — and just rerender
+ *      the nav;
+ *   4. on success, rebind everything per-doc: docName, the diff baseline, the
+ *      autosave slot, the incoming doc's restored localStorage draft (same
+ *      banner flow as startup), and reset the per-turn view state
+ *      (acceptedChanges, draftSeq, collapse seeding) before refetching
+ *      threads and rerendering.
+ */
+async function switchDoc(app: App, name: string): Promise<void> {
+  if (name === app.docName) return;
+
+  await sealDrafts(app);
+  autosaveDraft(app);
+
+  const next = await loadState(name);
+  if (next.isSample) {
+    // The switch failed server-side; the editor still holds the current doc.
+    await refreshDocList(app);
+    return;
+  }
+
+  app.docName = next.name ?? name;
+  loadMarkdown(app.ed, next.current);
+  app.baselineMd = next.baseline;
+  app.baselineIso = next.baselineIso;
+  app.draft = { name: app.docName, base: next.current };
+
+  // Restore the incoming doc's own unsaved edits, if a prior session banked
+  // any (same flow as startup); otherwise make sure no stale banner lingers.
+  const restored = loadDraft(window.localStorage, app.docName, next.current);
+  if (restored !== null) {
+    loadMarkdown(app.ed, restored);
+    wireDraftBanner(app);
+  } else {
+    document.getElementById('draft-banner')?.toggleAttribute('hidden', true);
+  }
+
+  app.acceptedChanges = new Set();
+  app.draftSeq.clear();
+  app.collapseInitialized = false;
+  if (app.usingStore) app.threads = await fetchThreads();
+  await refreshDocList(app);
+  await rerender(app);
 }
 
 /**
@@ -469,15 +609,22 @@ function wireCommit(app: App, btn: HTMLButtonElement): void {
     btn.textContent = 'Committing…';
     try {
       await sealDrafts(app);
-      const res = await fetch('/commit', { method: 'POST', body: currentMarkdown(app.ed) });
+      const res = await fetch(`/commit?doc=${encodeURIComponent(app.docName)}`, {
+        method: 'POST',
+        body: currentMarkdown(app.ed),
+      });
       const json = (await res.json()) as { ok: boolean; committed?: boolean; commit?: string };
       btn.textContent = !json.ok
         ? 'Commit failed'
         : json.committed
           ? `Committed ${json.commit}`
           : 'No changes';
-      // The doc we just sent is now on disk — clear the unsaved-edit safety net.
-      if (json.ok) markPersisted(app, currentMarkdown(app.ed));
+      // The doc we just sent is now on disk — clear the unsaved-edit safety
+      // net, and refresh the nav (this doc's state just flipped to clean).
+      if (json.ok) {
+        markPersisted(app, currentMarkdown(app.ed));
+        void refreshDocList(app);
+      }
     } catch {
       btn.textContent = 'Commit failed';
     } finally {
@@ -503,11 +650,18 @@ function wireSaveDraft(app: App, btn: HTMLButtonElement): void {
     btn.textContent = 'Saving…';
     try {
       await sealDrafts(app);
-      const res = await fetch('/save-draft', { method: 'POST', body: currentMarkdown(app.ed) });
+      const res = await fetch(`/save-draft?doc=${encodeURIComponent(app.docName)}`, {
+        method: 'POST',
+        body: currentMarkdown(app.ed),
+      });
       const json = (await res.json()) as { ok: boolean };
       btn.textContent = json.ok ? 'Saved' : 'Save failed';
-      // Draft is on disk now — clear the localStorage safety net for it.
-      if (json.ok) markPersisted(app, currentMarkdown(app.ed));
+      // Draft is on disk now — clear the localStorage safety net for it, and
+      // refresh the nav (this doc's state may have flipped clean→draft).
+      if (json.ok) {
+        markPersisted(app, currentMarkdown(app.ed));
+        void refreshDocList(app);
+      }
     } catch {
       btn.textContent = 'Save failed';
     } finally {

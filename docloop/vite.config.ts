@@ -1,5 +1,5 @@
 import { defineConfig, type Plugin } from 'vite';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { createApi, type ApiConfig } from './src/api';
 
 /**
@@ -19,7 +19,12 @@ function docloopEndpoints(): Plugin {
   // run one active doc per server instance.
   const docName = process.env.DOCLOOP_DOC ?? 'doc.md';
   const skillsDir = join(process.cwd(), 'skills'); // the docloop plugin's own skills (see skills/README.md)
-  const cfg: ApiConfig = { workspace, docName, skillsDir };
+  // The ctx node store for the left nav's node tree (GET /nodes) — optional;
+  // absolute or cwd-relative. Unset = no store, and the GUI hides the section.
+  const nodesDir = process.env.DOCLOOP_NODES
+    ? resolve(process.cwd(), process.env.DOCLOOP_NODES)
+    : undefined;
+  const cfg: ApiConfig = { workspace, docName, skillsDir, nodesDir };
 
   return {
     name: 'docloop-endpoints',

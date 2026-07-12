@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile, access } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, readdir, access, stat } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { join } from 'node:path';
@@ -7,6 +7,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import { renderTurn } from './turn';
 import { listThreads, addComment, updateComment, resolveThread, newThreadId } from './threads-store';
 import { listSkills, readSkillBody } from './skill-frontmatter';
+import { readNodeTree } from './nodes-fs';
 import { canonicalize } from '../scripts/dl/canonical';
 
 const run = promisify(execFile);
@@ -44,6 +45,27 @@ export interface ApiConfig {
   docName: string;
   /** The docloop plugin's own skills directory (see skills/README.md). */
   skillsDir: string;
+  /**
+   * The ctx node store's root directory (see DOCLOOP_NODES / GET /nodes) —
+   * absent means "no node store configured" and /nodes reports present:false.
+   */
+  nodesDir?: string;
+}
+
+/**
+ * Whether `name` is a safe doc name for the `?doc=` parameter (shared by
+ * /doc, /commit and /save-draft): non-empty, no path separators, not a dot
+ * path, does not start with `.`, and ends with `.md`. This is the
+ * path-traversal guard; `turn.xml` is excluded by the `.md` rule.
+ */
+function isSafeDocName(name: string): boolean {
+  return (
+    name.length > 0 &&
+    !name.includes('/') &&
+    !name.includes('\\') &&
+    !name.startsWith('.') &&
+    name.endsWith('.md')
+  );
 }
 
 /**
@@ -61,6 +83,14 @@ export interface ApiConfig {
  *                          baseline = the commit before it. After Claude edits
  *                          + commits, a GUI reload shows Claude's changes as
  *                          diffs against the human's last turn.
+ *   GET  /docs           — the workspace's reviewable docs (tracked ∪
+ *                          working-tree top-level *.md) with per-doc state,
+ *                          for the left-nav doc list. /doc, /commit and
+ *                          /save-draft all take `?doc=<name>` to target a doc
+ *                          other than the configured default.
+ *   GET  /nodes          — the ctx node-store seam: a read-only directory
+ *                          tree of cfg.nodesDir (present:false when unset or
+ *                          missing) — see src/nodes-fs.ts.
  *   GET  /docloop-skills — the docloop plugin's skill roster, for the
  *                          slash-trigger dropdown (see skills/README.md).
  *   POST /run-skill      — invoke one docloop skill live, synchronously,
@@ -80,7 +110,8 @@ export function createApi(
   cfg: ApiConfig,
 ): (req: IncomingMessage, res: ServerResponse, next?: () => void) => void {
   const { workspace, docName } = cfg;
-  const docPath = join(workspace, docName);
+  /** Working-tree path of doc `name` (validated by the caller — see isSafeDocName). */
+  const pathFor = (name: string) => join(workspace, name);
   const turnPath = join(workspace, 'turn.xml');
   const threadsDir = join(workspace, 'threads'); // sidecar store: threads/<id>/NNNN.md
   const skillsDir = cfg.skillsDir;
@@ -106,11 +137,34 @@ export function createApi(
     }
   };
 
-  /** A committed revision of the doc, or null if that rev doesn't exist. */
-  const showDoc = async (rev: string): Promise<string | null> => {
-    return git('show', `${rev}:${docName}`)
+  /** A committed revision of doc `name`, or null if that rev (or the doc in it) doesn't exist. */
+  const showDoc = async (rev: string, name: string = docName): Promise<string | null> => {
+    return git('show', `${rev}:${name}`)
       .then(({ stdout }) => stdout)
       .catch(() => null);
+  };
+
+  /**
+   * Tracked top-level `*.md` files of the workspace repo, sorted — the same
+   * discovery rule as `scripts/dl/docs.ts` `trackedDocs` (replicated rather
+   * than imported: this module's git plumbing already runs `-C workspace`).
+   * Never `turn.xml` (not `.md`), never nested files (so never `threads/`).
+   */
+  const trackedDocs = async (): Promise<string[]> => {
+    const { stdout } = await git('ls-files', '--', '*.md');
+    return stdout
+      .split('\n')
+      .filter((f) => f.length > 0 && !f.includes('/'))
+      .sort();
+  };
+
+  /** Working-tree top-level `*.md` files (no dot-files), sorted. */
+  const workingTreeDocs = async (): Promise<string[]> => {
+    const entries = await readdir(workspace, { withFileTypes: true });
+    return entries
+      .filter((e) => e.isFile() && e.name.endsWith('.md') && !e.name.startsWith('.'))
+      .map((e) => e.name)
+      .sort();
   };
 
   const readBody = (req: IncomingMessage): Promise<string> =>
@@ -130,15 +184,35 @@ export function createApi(
   return (req, res, next) => {
     const url = req.url ?? '/';
     const pathname = url.split('?')[0];
+    const query = new URLSearchParams(url.split('?')[1] ?? '');
 
     const notFound = () => {
       if (next) return next();
       send(res, 404, { ok: false, error: 'not found' });
     };
 
-    // POST /commit — render the turn, then write + commit the doc.
+    /**
+     * Resolve the `?doc=` parameter for /doc, /commit and /save-draft:
+     * absent → the configured default (exactly today's behaviour); present
+     * but unsafe → null, and a 400 has already been sent (nothing written).
+     */
+    const requestedDoc = (): string | null => {
+      const doc = query.get('doc');
+      if (doc === null) return docName;
+      if (!isSafeDocName(doc)) {
+        send(res, 400, { ok: false, error: `unsafe doc name: ${JSON.stringify(doc)}` });
+        return null;
+      }
+      return doc;
+    };
+
+    // POST /commit — render the turn, then write + commit the doc. `?doc=`
+    // selects which doc (default: cfg.docName); other docs' working-tree
+    // drafts are neither staged nor modified.
     if (pathname === '/commit') {
       if (req.method !== 'POST') return notFound();
+      const name = requestedDoc();
+      if (name === null) return;
       void (async () => {
         try {
           await ensureRepo();
@@ -150,7 +224,7 @@ export function createApi(
           // Render the turn (human's delta vs the last commit) BEFORE committing,
           // so HEAD still points at the previous version. First commit -> diff
           // against empty.
-          const prevMd = (await showDoc('HEAD')) ?? '';
+          const prevMd = (await showDoc('HEAD', name)) ?? '';
           await mkdir(threadsDir, { recursive: true });
           const store = await listThreads(threadsDir);
           // The previous commit's time bounds "added-to since last turn": a
@@ -163,12 +237,12 @@ export function createApi(
             .catch(() => null);
           await writeFile(turnPath, renderTurn(prevMd, newMd, store, sinceIso), 'utf8');
 
-          await writeFile(docPath, newMd, 'utf8');
+          await writeFile(pathFor(name), newMd, 'utf8');
           // Commit BOTH the doc and the sidecar store, so a turn that only
           // touches threads (e.g. a reply, no doc edit) still advances HEAD —
           // otherwise the previous-commit time wouldn't move and that reply
           // would be re-reported as "updated" on the next turn.
-          await git('add', docName, 'threads');
+          await git('add', name, 'threads');
           let committed = true;
           await git('commit', '-q', '-m', `turn @ ${new Date().toISOString()}`).catch(() => {
             committed = false; // nothing staged — no change since the last commit
@@ -191,11 +265,13 @@ export function createApi(
     // are unaffected by any of this — they persist immediately via /threads.
     if (pathname === '/save-draft') {
       if (req.method !== 'POST') return notFound();
+      const name = requestedDoc();
+      if (name === null) return;
       void (async () => {
         try {
           await ensureRepo();
           const md = await canonicalize(await readBody(req));
-          await writeFile(docPath, md, 'utf8');
+          await writeFile(pathFor(name), md, 'utf8');
           send(res, 200, { ok: true });
         } catch (err) {
           send(res, 500, { ok: false, error: String(err) });
@@ -204,28 +280,88 @@ export function createApi(
       return;
     }
 
-    // GET /doc — current + baseline from git, for (re)loading the read/write view.
+    // GET /doc — current + baseline from git, for (re)loading the read/write
+    // view. `?doc=` selects which doc (default: cfg.docName).
     if (pathname === '/doc') {
       if (req.method !== 'GET') return notFound();
+      const name = requestedDoc();
+      if (name === null) return;
       void (async () => {
         try {
           await ensureRepo();
           // current: the working-tree file if one exists — after every commit
           // (via /commit, or Claude committing directly) it matches HEAD, but a
           // /save-draft may have left it ahead of HEAD (an uncommitted draft) —
-          // else HEAD's committed doc.md, else absent entirely (no doc yet).
+          // else HEAD's committed doc, else absent entirely (no doc yet).
           const current =
-            (await readFile(docPath, 'utf8').catch(() => null)) ?? (await showDoc('HEAD'));
+            (await readFile(pathFor(name), 'utf8').catch(() => null)) ??
+            (await showDoc('HEAD', name));
           if (current === null) return send(res, 200, { ok: true, present: false });
-          // baseline: the commit before HEAD (null if HEAD is the first commit).
-          const baseline = await showDoc('HEAD~1');
+          // baseline: this doc as of the commit before HEAD (null if HEAD is
+          // the first commit) — per-doc, but the boundary is the whole
+          // workspace's HEAD~1 (commit == turn), so a doc untouched by the
+          // last commit has baseline == current (an empty diff).
+          const baseline = await showDoc('HEAD~1', name);
           // baselineIso: HEAD~1's commit time as UTC — the boundary of "the last
           // turn" (current is HEAD; the last turn is HEAD~1 → HEAD), so the GUI
           // can tell which comments arrived this turn. Null if HEAD is the first.
           const baselineIso = await git('show', '-s', '--format=%ct', 'HEAD~1')
             .then(({ stdout }) => new Date(Number(stdout.trim()) * 1000).toISOString())
             .catch(() => null);
-          send(res, 200, { ok: true, present: true, name: docName, current, baseline, baselineIso });
+          send(res, 200, { ok: true, present: true, name, current, baseline, baselineIso });
+        } catch (err) {
+          send(res, 500, { ok: false, error: String(err) });
+        }
+      })();
+      return;
+    }
+
+    // GET /docs — the workspace's reviewable docs for the left-nav doc list:
+    // union of tracked top-level *.md (the scripts/dl/docs.ts discovery rule)
+    // and working-tree top-level *.md, each with a state:
+    //   untracked — in the working tree but never committed;
+    //   draft     — tracked, working-tree bytes differ from HEAD (includes
+    //               "deleted from the working tree but still tracked");
+    //   clean     — tracked and identical to HEAD.
+    if (pathname === '/docs') {
+      if (req.method !== 'GET') return notFound();
+      void (async () => {
+        try {
+          await ensureRepo();
+          const tracked = await trackedDocs().catch(() => [] as string[]);
+          const trackedSet = new Set(tracked);
+          const names = [...new Set([...tracked, ...(await workingTreeDocs())])].sort();
+          const docs = await Promise.all(
+            names.map(async (name) => {
+              if (!trackedSet.has(name)) return { name, state: 'untracked' };
+              const head = await showDoc('HEAD', name);
+              const wt = await readFile(pathFor(name), 'utf8').catch(() => null);
+              return { name, state: wt === head ? 'clean' : 'draft' };
+            }),
+          );
+          send(res, 200, { ok: true, docs, default: docName });
+        } catch (err) {
+          send(res, 500, { ok: false, error: String(err) });
+        }
+      })();
+      return;
+    }
+
+    // GET /nodes — the ctx node-store seam (read-only; see src/nodes-fs.ts).
+    // No nodesDir configured, or configured but missing on disk → present:false
+    // (the GUI degrades silently, never errors).
+    if (pathname === '/nodes') {
+      if (req.method !== 'GET') return notFound();
+      void (async () => {
+        try {
+          const nodesDir = cfg.nodesDir;
+          const absent = () => send(res, 200, { ok: true, present: false, nodes: [] });
+          if (nodesDir === undefined) return absent();
+          const onDisk = await stat(nodesDir)
+            .then((s) => s.isDirectory())
+            .catch(() => false);
+          if (!onDisk) return absent();
+          send(res, 200, { ok: true, present: true, nodes: await readNodeTree(nodesDir) });
         } catch (err) {
           send(res, 500, { ok: false, error: String(err) });
         }
