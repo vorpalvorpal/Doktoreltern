@@ -37,8 +37,8 @@ class TestI12Dormant:
 class TestI13FidelityRollUp:
     def _tree(self, child_fid, child_state="open", child_reason=None, child_labels=()):
         parent = C.Node(16, "📊 Fidelity: correct\n", "open", None, set())
-        child = C.Node(17, f"🧩 Part-of: #16\n📊 Fidelity: {child_fid}\n",
-                       child_state, child_reason, set(child_labels))
+        child = C.Node(17, f"📊 Fidelity: {child_fid}\n",
+                       child_state, child_reason, set(child_labels), parent=16)
         return [parent, child]
 
     def test_correct_parent_with_lagging_child_flags(self):

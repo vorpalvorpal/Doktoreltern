@@ -10,8 +10,8 @@ Assumed public API (the *behaviour* is the contract; implement may rename — if
 it does, update these shims, not the assertions):
 
     ctx_core
-        Kind constants: PART_OF, ASPECT, BOUNDARY, BLOCKED_BY, DESIGN, EQ,
-            CITES, DEAD_END  (str ids)
+        Kind constants: ASPECT, BOUNDARY, BLOCKED_BY, DESIGN, EQ,
+            CITES, DEAD_END  (str ids); the tree is Node.parent (FS nesting)
         Marker(kind, value, line)   dataclass; equal by (kind, value)
         Finding(issue, key, detail) dataclass; str() -> "#<issue>:<key>:<detail>"
         Node(number, body, state, state_reason, labels)
@@ -76,7 +76,6 @@ def inline_markers_text():
     return (
         "Some prose introducing the node.\n"
         "\n"
-        "🧩 Part-of: #16\n"
         "🏷️ aspect: numerics\n"
         "🧱 Boundary: #17, #18\n"
         "⛔ Blocked-by: #12\n"
@@ -114,8 +113,9 @@ def two_node_tree():
     return {
         "bodies": {
             16: "Epic root.\n🏷️ aspect: numerics\n🧱 Boundary: #17\n",
-            17: "Child design node.\n🧩 Part-of: #16\n🏷️ aspect: numerics\n",
+            17: "Child design node.\n🏷️ aspect: numerics\n",
         },
+        "parents": {17: 16},   # the tree is FS nesting → Node.parent, not a marker
         "states": {16: ("open", None), 17: ("open", None)},
         "subissue_edges": {(16, 17)},
         "labels": {16: {"aspect:numerics"}, 17: {"aspect:numerics"}},

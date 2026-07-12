@@ -4,16 +4,21 @@ Replaces `ctx_fetch`'s GitHub calls with plain directory I/O plus real git
 commits. See dev/CONTRACT.md ("ctx_store public API") and
 dev/01-store-substrate.md (requirements R1-R10, R4b) for the pinned contract.
 
-Layout (a store is its own git repo):
+Layout (a store is its own git repo). The node tree is the directory nesting:
+any non-dotted subdir is a CHILD node; a dot-prefixed subdir (.comments) is a
+COMPONENT of the enclosing node. A node's parent is its nearest non-dotted
+ancestor dir (None for a root directly under nodes/).
 
     <store>/
       _next                     # plain text: next id to allocate, e.g. "17\n"
       nodes/
-        <id>/
+        <id>/                   # a root node (parent = None)
           node.md               # YAML-ish frontmatter + Markdown body
-          comments/
+          .comments/            # dot-prefixed → a component, not a child node
             0001.md
             0002.md
+          <child-id>/           # a child node nests inside its parent's dir
+            node.md
 """
 from __future__ import annotations
 
@@ -47,8 +52,41 @@ def _nodes_dir(store) -> Path:
     return Path(store) / "nodes"
 
 
+def _iter_node_dirs(dir_path: Path, parent_id):
+    """Recursively yield (path, node_id, parent_id) for every node dir under
+    `dir_path`.
+
+    Descends only through node dirs. A **component** dir is marked by a leading
+    ``.`` (``.comments``, ``.records``); any other subdirectory is a **child
+    node**. So the node/component split is the dot-prefix, not the name shape —
+    node names carry no other requirement (ids happen to be integers, allocated
+    by `_next`). `parent_id` is the nearest ancestor node's id (None at the top,
+    directly under nodes/).
+    """
+    if not dir_path.is_dir():
+        return
+    for entry in sorted(dir_path.iterdir()):
+        if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        node_id = int(entry.name)
+        yield entry, node_id, parent_id
+        yield from _iter_node_dirs(entry, node_id)
+
+
 def _node_dir(store, node_id) -> Path:
-    return _nodes_dir(store) / str(node_id)
+    """Resolve a node id to its directory by walking the nested tree.
+
+    A node dir may sit anywhere under nodes/ (roots directly under it, children
+    nested inside their parent's dir). Returns the matching dir, or the flat
+    ``nodes/<id>`` path when the id is not found — so missing-node callers
+    (``_node_file(...).exists()`` guards) behave exactly as before. A fresh walk
+    per call is fine at this scale.
+    """
+    target = str(node_id)
+    for path, _nid, _pid in _iter_node_dirs(_nodes_dir(store), None):
+        if path.name == target:
+            return path
+    return _nodes_dir(store) / target
 
 
 def _next_path(store) -> Path:
@@ -56,7 +94,9 @@ def _next_path(store) -> Path:
 
 
 def _comments_dir(store, node_id) -> Path:
-    return _node_dir(store, node_id) / "comments"
+    # `.comments` — a component dir, dot-prefixed so it is never mistaken for a
+    # child node (the node/component split is the leading dot; see _iter_node_dirs).
+    return _node_dir(store, node_id) / ".comments"
 
 
 def _node_file(store, node_id) -> Path:
@@ -167,19 +207,14 @@ def read_nodes(store) -> list:
     nodes_dir = _nodes_dir(store)
     if not nodes_dir.is_dir():
         return []
-    ids = []
-    for entry in nodes_dir.iterdir():
-        if not entry.is_dir():
-            continue
-        try:
-            ids.append(int(entry.name))
-        except ValueError:
-            continue
-    ids.sort()
+
+    # Walk the nested tree; each non-dotted dir is a node whose parent is its
+    # nearest non-dotted ancestor (None for a root). Ascending by id.
+    entries = sorted(_iter_node_dirs(nodes_dir, None), key=lambda e: e[1])
 
     out = []
-    for node_id in ids:
-        node_file = _node_file(store, node_id)
+    for path, node_id, parent_id in entries:
+        node_file = path / "node.md"
         if not node_file.exists():
             continue
         frontmatter, body = _read_node_file(node_file)
@@ -192,6 +227,7 @@ def read_nodes(store) -> list:
             set(frontmatter.get("labels") or []),
             comments,
             title=frontmatter.get("title", ""),
+            parent=parent_id,
         ))
     return out
 
@@ -266,23 +302,28 @@ def _commit(store, msg: str) -> None:
 # R6 — create_node
 # ---------------------------------------------------------------------------
 def create_node(store, title: str, body: str, *, parent=None, labels=None) -> int:
+    """Create a node, allocating the next id from _next and committing once.
+
+    The tree is the filesystem: with `parent` given, the new node dir nests
+    inside that parent's dir (``<parent path>/<newid>/``); otherwise it is a root
+    directly under ``nodes/``. There is no Part-of marker — the parent comes from
+    this argument, never from the body.
+    """
     store_path = Path(store)
     if not (store_path / ".git").exists():
         raise StoreError(f"not a store (no .git found): {store_path}")
 
     _validate(body)
 
-    if parent is not None:
-        parsed = ctx_core.parse(body)
-        ids = [p for m in parsed.markers if m.kind == ctx_core.PART_OF for p in m.value]
-        if parent not in ids:
-            raise ValidationError([ctx_core.Finding(
-                issue=0, key="parent_mismatch",
-                detail=f"declared parent {parent} has no matching Part-of marker in body",
-            )])
+    if parent is None:
+        parent_dir = _nodes_dir(store_path)
+    else:
+        parent_dir = _node_dir(store_path, parent)
+        if not (parent_dir / "node.md").exists():
+            raise StoreError(f"no such parent node: {parent}")
 
     node_id = _alloc_id(store_path)
-    node_file = _node_file(store_path, node_id)
+    node_file = parent_dir / str(node_id) / "node.md"
     _write_node_file(
         node_file, title=title, state="open", state_reason=None,
         labels=labels or [], body=body,

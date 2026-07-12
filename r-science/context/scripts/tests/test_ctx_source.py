@@ -23,9 +23,9 @@ def _nodes():
     return [
         C.Node(16, "# Epic\nThe whole epic.\n", "open", None, set(), [C.Comment(1, "c16")]),
         C.Node(17,
-               "# Design node\n🧩 Part-of: #16\nOne design slice.\n"
+               "# Design node\nOne design slice.\n"
                "🪦 Dead-end: #17.de1 closed tried FFT\n🟰 Eq: smith2020\n",
-               "open", None, set()),
+               "open", None, set(), parent=16),
     ]
 
 
@@ -42,7 +42,7 @@ class TestOverRealStore:
         parent = ctx_store.create_node(str(store_dir), "Epic", "# Epic\nThe whole epic.\n")
         child = ctx_store.create_node(
             str(store_dir), "Design node",
-            f"# Design node\n🧩 Part-of: #{parent}\nOne design slice.\n",
+            "# Design node\nOne design slice.\n",
             parent=parent,
         )
         ctx_store.add_comment(str(store_dir), parent, "c16")
@@ -84,7 +84,7 @@ class TestPurposeExtraction:
         return ctx_source.RepoSource("r", fetch=lambda r: nodes).nodes[16]["purpose"]
 
     def test_strips_leading_bold_label(self):
-        body = ("# X\n🧩 Part-of: #1\n"
+        body = ("# X\n"
                 "**Stub.** The control layer adds the **axes** and **scheduler**. More.\n")
         assert self._purpose_for(body) == "The control layer adds the axes and scheduler."
 
@@ -99,7 +99,7 @@ class TestPurposeExtraction:
     def test_joins_wrapped_lines_no_midsentence_truncation(self):
         # regression for #32-style bodies that previously returned a garbled
         # continuation line beginning "axes** (...".
-        body = ("# X\n🧩 Part-of: #1\n"
+        body = ("# X\n"
                 "**Stub.** The control layer adds the **four\n"
                 "axes** (a, b), the **scheduler**.\n")
         p = self._purpose_for(body)
@@ -117,7 +117,7 @@ class TestTitlePreference:
     def test_falls_back_to_body_heading_then_number(self):
         nodes = [
             C.Node(16, "# Body Heading\nx\n", "open", None, set()),          # no gh title
-            C.Node(17, "no heading here\n🧩 Part-of: #16\n", "open", None, set()),
+            C.Node(17, "no heading here\n", "open", None, set(), parent=16),
         ]
         src = ctx_source.RepoSource("r", fetch=lambda r: nodes)
         assert src.nodes[16]["title"] == "Body Heading"   # body-heading fallback
@@ -134,8 +134,8 @@ class TestServingOverRepoSource:
     def test_siblings_are_summaries(self):
         server = _load_server()
         # add a second child so 17 has a sibling
-        nodes = _nodes() + [C.Node(18, "# Other\n🧩 Part-of: #16\nanother slice.\n",
-                                   "open", None, set())]
+        nodes = _nodes() + [C.Node(18, "# Other\nanother slice.\n",
+                                   "open", None, set(), parent=16)]
         src = ctx_source.RepoSource("r", fetch=lambda r: nodes)
         sibs = server.get_siblings(src, 17)
         blob = repr(sibs)

@@ -10,9 +10,9 @@ bodies throughout this project.  `ctx_core.py` implements this grammar.  `#18`
 
 **The full `emoji + keyword + :` triple is the canonical match token.**  A marker
 registers only when all three appear together, line-anchored and in order
-(e.g. `🧩 Part-of:`).  Requiring *both* halves is deliberate, because each one
+(e.g. `🧱 Boundary:`).  Requiring *both* halves is deliberate, because each one
 collides with ordinary prose on its own: a bare emoji — ✅, ❓, ⚡ and 🔒 are all
-common in running text — is treated as decoration, and a bare keyword ("Part-of",
+common in running text — is treated as decoration, and a bare keyword ("Boundary",
 "Future:") is treated as prose too.  The two omissions are handled
 **asymmetrically**: a bare keyword looks like a forgotten sigil, so the linter
 flags it (I8) and asks the human to repair it; a bare emoji is just decoration, so
@@ -27,6 +27,12 @@ register.  A standalone blockquote — one that is not immediately preceded by a
 empty-value block-form marker line — is inert quoted text; nothing inside it is
 scanned for further markers.  Quoting another issue's marker text never
 double-registers it.
+
+**Node hierarchy is the filesystem, not a marker.**  A node's parent is the
+enclosing node directory in the store (`nodes/16/24/41` ⇒ 41's parent is 24),
+surfaced as `ctx_core.Node.parent` and folded into `Model.tree_edges`.  Component
+dirs are dot-prefixed (`.comments`); any other subdir is a child node.  There is
+no `Part-of` marker — the directory nesting *is* the tree.
 
 ---
 
@@ -69,7 +75,6 @@ Use for multi-line prose, LaTeX `align` blocks, and rationale text.
 
 | Emoji | Keyword | Value type | Form |
 |-------|---------|------------|------|
-| 🧩 | `Part-of:` | comma-list of issue refs `#\d+` → `list[int]` | inline |
 | 🏷️ | `aspect:` | aspect token → `str` | inline |
 | 🧱 | `Boundary:` | comma-list of issue refs → `list[int]` | inline (block permitted) |
 | ⛔ | `Blocked-by:` | comma-list of issue refs → `list[int]` | inline |
@@ -135,7 +140,7 @@ so ordinary prose beginning with such a word is not a false positive.
 ## Deferred work: Future / Refinement / Optimisation (#33)
 
 Three keyed registers hold work that is **not** an open child. (Anything load-bearing
-for the current sweep is an open `Part-of` child instead — there is no "load-bearing"
+for the current sweep is an open child node instead — there is no "load-bearing"
 flag; the fold is `min` over open + closed-completed children + own glue.)
 
 | Marker | Means | Bears on *this node's* correctness? |
@@ -204,35 +209,9 @@ outside the allowed set is a Finding (never silently dropped).
 
 ## Per-marker examples
 
-### 🧩 `Part-of:`
-
-Declares that this node is a child of one or more parent issues.
-
-**Positive — recognised:**
-```
-🧩 Part-of: #16
-```
-Parses to `Marker(PART_OF, [16], line)`.
-
-**Positive — comma list:**
-```
-🧩 Part-of: #16, #17
-```
-Parses to `Marker(PART_OF, [16, 17], line)`.
-
-**Negative — bare keyword (no emoji), not recognised:**
-```
-Part-of: #16
-```
-Not parsed as a marker.  I8 flags it as a finding.
-
-**Negative — emoji mid-sentence, not recognised:**
-```
-As shown 🧩 Part-of: #16 in this summary.
-```
-Not a marker; emoji is not the first non-whitespace token.
-
----
+> **Node hierarchy has no marker.**  A node's parent is the enclosing node
+> directory in the store (see *Design principles*); it is not declared in the
+> body.  The examples below cover only in-body markers.
 
 ### 🏷️ `aspect:`
 

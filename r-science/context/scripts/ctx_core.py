@@ -6,9 +6,10 @@ a pure function of its arguments; same input → same output.
 Public API
 ----------
 Kind constants (str):
-    PART_OF, ASPECT, BOUNDARY, BLOCKED_BY, DESIGN, EQ, CITES, DEAD_END,
+    ASPECT, BOUNDARY, BLOCKED_BY, DESIGN, EQ, CITES, DEAD_END,
     CONFIDENCE, FIDELITY, SEAL, QUESTION, VALIDATION, ALTERNATIVE, FUTURE, REFINE,
     OPT, ARTEFACT
+    (The node tree is the filesystem nesting — Node.parent — not a Part-of marker.)
     (FUTURE = expansion, prefix `fut`, optional [v<n>] tag; REFINE = correctness-bearing
      accuracy lever, prefix `fd`; OPT = speed lever, prefix `opt`.)
 
@@ -40,7 +41,6 @@ from typing import Callable
 # Kind constants
 # ---------------------------------------------------------------------------
 
-PART_OF = "part_of"
 ASPECT = "aspect"
 BOUNDARY = "boundary"
 BLOCKED_BY = "blocked_by"
@@ -77,7 +77,6 @@ def _norm(glyph: str) -> str:
 
 
 # Rendered glyphs (no trailing U+FE0F — normalised form).
-_G_PART_OF   = _norm("🧩")
 _G_ASPECT    = _norm("🏷️")   # may or may not have FE0F; _norm strips it
 _G_BOUNDARY  = _norm("🧱")
 _G_BLOCKED   = _norm("⛔")
@@ -257,7 +256,6 @@ def _keyed_inline_is_id_only(inline: str, status_set: frozenset) -> bool:
 # Table: (normalised_glyph, keyword_regex, kind, parser, is_block_only)
 # keyword_regex is case-insensitive and matched after the glyph.
 _VOCAB: list[tuple[str, str, str, Callable, bool]] = [
-    (_G_PART_OF,  r"Part-of",   PART_OF,   _parse_issue_list,  False),
     (_G_ASPECT,   r"aspect",    ASPECT,    _parse_str,         False),
     (_G_BOUNDARY, r"Boundary",  BOUNDARY,  _parse_issue_list,  False),
     (_G_BLOCKED,  r"Blocked-by",BLOCKED_BY,_parse_issue_list,  False),
@@ -353,6 +351,10 @@ class Node:
 
     `comments` is the append-only stream after the body; collate folds
     [body @ seq 0] + comments latest-wins. Defaults empty for body-only nodes.
+
+    `parent` is the tree parent's id, derived from the filesystem nesting
+    (the enclosing numeric node dir); ``None`` for a root. This — not a Part-of
+    marker — is the single source of the node tree.
     """
     number: int
     body: str
@@ -361,6 +363,7 @@ class Node:
     labels: set           # set[str]
     comments: list = field(default_factory=list)  # list[Comment]
     title: str = ""       # the GitHub issue title (canonical node title; "" if unfetched)
+    parent: int | None = None  # FS-derived tree parent id; None for a root
 
 
 @dataclass
@@ -625,7 +628,6 @@ def parse(text: str) -> Parsed:
 
 # Keyword display strings (matching the fixture text in tests).
 _KIND_TO_KW: dict[str, str] = {
-    PART_OF:   "Part-of",
     ASPECT:    "aspect",
     BOUNDARY:  "Boundary",
     BLOCKED_BY:"Blocked-by",
@@ -649,7 +651,6 @@ _KIND_TO_KW: dict[str, str] = {
 
 # Glyph for rendering (normalised, no trailing FE0F).
 _KIND_TO_GLYPH: dict[str, str] = {
-    PART_OF:   _G_PART_OF,
     ASPECT:    _G_ASPECT,
     BOUNDARY:  _G_BOUNDARY,
     BLOCKED_BY:_G_BLOCKED,
@@ -674,7 +675,7 @@ _KIND_TO_GLYPH: dict[str, str] = {
 
 def _render_value(kind: str, value: object) -> str:
     """Render a non-keyed marker value to its string representation."""
-    if kind in (PART_OF, BOUNDARY, BLOCKED_BY):
+    if kind in (BOUNDARY, BLOCKED_BY):
         # list[int] → "#16, #17"
         assert isinstance(value, list)
         return ", ".join(f"#{n}" for n in value)
@@ -742,6 +743,11 @@ def collate(nodes: list) -> Model:
     for node in nodes:
         model.nodes[node.number] = node
 
+        # The tree is the filesystem nesting: a node's parent is its enclosing
+        # numeric node dir (Node.parent), not a Part-of marker.
+        if node.parent is not None:
+            model.tree_edges.add((node.parent, node.number))
+
         # The node's marker stream in seq order — the body is seq 0.
         stream = [(0, mk) for mk in parse(node.body).markers]
         for c in sorted(node.comments, key=lambda c: c.seq):
@@ -763,9 +769,6 @@ def collate(nodes: list) -> Model:
                 if SEAL not in gauge_seq or seq >= gauge_seq[SEAL]:
                     gauge_seq[SEAL] = seq
                     model.seal_own[node.number] = mk.value.split()[0]
-            elif mk.kind == PART_OF:
-                for parent in mk.value:
-                    model.tree_edges.add((parent, node.number))
             elif mk.kind == ASPECT:
                 if mk.value not in model.aspects[node.number]:
                     model.aspects[node.number].append(mk.value)

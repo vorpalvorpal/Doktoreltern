@@ -49,9 +49,10 @@ def _malformed_body():
 
 
 def _valid_body(parent=None):
-    if parent is None:
-        return "Some prose.\n"
-    return f"Some prose.\n🧩 Part-of: #{parent}\n"
+    # The tree is the filesystem now — a node's parent is the `parent=` kwarg to
+    # create_node, never a Part-of marker in the body. `parent` is accepted (and
+    # ignored) only for call-site compatibility.
+    return "Some prose.\n"
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +153,7 @@ class TestNodeMdSerialization:
 
     def test_node_md_body_byte_identical_via_unfiltered_diff(self, tmp_path):
         path = tmp_path / "node.md"
-        body = "Line one.\nLine two.\n\n🧩 Part-of: #3\n"
+        body = "Line one.\nLine two.\n\nA third paragraph.\n"
         ctx_store._write_node_file(
             str(path), title="T", state="open", state_reason=None,
             labels=[], body=body,
@@ -354,40 +355,44 @@ class TestCreateNode:
         [node] = ctx_store.read_nodes(str(store))
         assert node.labels == set()
 
-    def test_create_node_parent_assertion_verified_by_parsing_not_substring(self, store):
-        parent_id = ctx_store.create_node(str(store), "Parent", _valid_body())
-        # body's Part-of marker does NOT match the declared parent kwarg
-        mismatched_body = _valid_body(parent=parent_id + 100)
-        with pytest.raises(ctx_store.ValidationError):
-            ctx_store.create_node(
-                str(store), "Child", mismatched_body, parent=parent_id,
-            )
-
-    def test_create_node_parent_assertion_rejects_bare_ref_in_prose(self, store):
-        # The distinguishing case for "parse, not substring": the parent id
-        # appears as a bare `#N` in prose but NOT as a Part-of marker. A
-        # substring/regex impl would wrongly accept; a marker-parse impl must
-        # reject, because there is no Part-of edge to the declared parent.
-        parent_id = ctx_store.create_node(str(store), "Parent", _valid_body())
-        prose_only = f"See issue #{parent_id} for background.\n"
-        with pytest.raises(ctx_store.ValidationError):
-            ctx_store.create_node(str(store), "Child", prose_only, parent=parent_id)
-
-    def test_create_node_parent_assertion_passes_when_marker_present(self, store):
+    def test_create_node_nests_under_declared_parent(self, store):
+        # The tree is the filesystem: parent comes from the kwarg, and read_nodes
+        # derives Node.parent from the nesting (no Part-of marker involved).
         parent_id = ctx_store.create_node(str(store), "Parent", _valid_body())
         child_id = ctx_store.create_node(
-            str(store), "Child", _valid_body(parent=parent_id), parent=parent_id,
+            str(store), "Child", _valid_body(), parent=parent_id,
         )
-        assert isinstance(child_id, int)
-
-    def test_create_node_never_injects_parent_marker(self, store):
-        parent_id = ctx_store.create_node(str(store), "Parent", _valid_body())
-        # no Part-of marker in body at all, and no parent kwarg given
-        child_id = ctx_store.create_node(str(store), "Child", "Plain body, no marker.\n")
         [child] = [n for n in ctx_store.read_nodes(str(store)) if n.number == child_id]
-        ids = [p for m in ctx_core.parse(child.body).markers
-               if m.kind == ctx_core.PART_OF for p in m.value]
-        assert ids == []
+        assert child.parent == parent_id
+
+    def test_create_node_child_dir_nests_inside_parent_dir(self, store):
+        parent_id = ctx_store.create_node(str(store), "Parent", _valid_body())
+        child_id = ctx_store.create_node(
+            str(store), "Child", _valid_body(), parent=parent_id,
+        )
+        # The child's node.md lives physically under the parent's dir.
+        nested = store / "nodes" / str(parent_id) / str(child_id) / "node.md"
+        assert nested.exists()
+
+    def test_create_node_rejects_unknown_parent(self, store):
+        # A parent id that resolves to no existing node dir is refused, and
+        # nothing is written (no id burned, no commit).
+        before_next = (store / "_next").read_text()
+        before_log = _commit_subjects(store)
+        with pytest.raises(ctx_store.StoreError):
+            ctx_store.create_node(str(store), "Orphan", _valid_body(), parent=999)
+        assert (store / "_next").read_text() == before_next
+        assert _commit_subjects(store) == before_log
+
+    def test_create_node_without_parent_is_a_root(self, store):
+        # No parent kwarg ⇒ a root dir directly under nodes/, Node.parent is None,
+        # and the body is stored verbatim (no marker is ever injected).
+        body = "Plain body, no marker.\n"
+        child_id = ctx_store.create_node(str(store), "Root", body)
+        [child] = [n for n in ctx_store.read_nodes(str(store)) if n.number == child_id]
+        assert child.parent is None
+        assert child.body == body
+        assert (store / "nodes" / str(child_id) / "node.md").exists()
 
     def test_create_node_returns_new_id(self, store):
         node_id = ctx_store.create_node(str(store), "T", _valid_body())
@@ -421,9 +426,10 @@ class TestAddComment:
 
     def test_add_comment_creates_comments_dir_if_absent(self, store):
         node_id = ctx_store.create_node(str(store), "T", _valid_body())
-        assert not (store / "nodes" / str(node_id) / "comments").exists()
+        # `.comments` is dot-prefixed so it is never mistaken for a child node.
+        assert not (store / "nodes" / str(node_id) / ".comments").exists()
         ctx_store.add_comment(str(store), node_id, "c1\n")
-        assert (store / "nodes" / str(node_id) / "comments").is_dir()
+        assert (store / "nodes" / str(node_id) / ".comments").is_dir()
 
     def test_add_comment_commit_message(self, store):
         node_id = ctx_store.create_node(str(store), "T", _valid_body())
@@ -492,7 +498,7 @@ class TestSetState:
 
     def test_set_state_preserves_body_byte_identical(self, store):
         parent_id = ctx_store.create_node(str(store), "Parent", _valid_body())
-        body = f"Prose with detail.\n\n🧩 Part-of: #{parent_id}\n"
+        body = "Prose with detail.\n\nMore detail.\n"
         node_id = ctx_store.create_node(str(store), "T", body, parent=parent_id)
         before = [n for n in ctx_store.read_nodes(str(store)) if n.number == node_id][0].body
         ctx_store.set_state(str(store), node_id, "closed", state_reason="not_planned")

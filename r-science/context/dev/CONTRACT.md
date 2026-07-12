@@ -32,15 +32,27 @@ A **store** is a directory that is **its own git repository** (like
 env var — **never hardcoded**. Tests use a pytest `tmp_path` initialised with
 `git init`.
 
+The node **tree is the directory nesting**: any non-dotted subdir is a CHILD
+node; a dot-prefixed subdir (`.comments`) is a COMPONENT of the enclosing node. A
+node's parent is its nearest non-dotted ancestor dir (`None` for a root sitting
+directly under `nodes/`). There is no `Part-of` marker — the nesting is the tree.
+Node dir names carry no requirement beyond the dot rule (ids are still positive
+integers, allocated by `_next`); the dot-prefix, not the name shape, is what
+distinguishes a component from a node.
+
 ```
 <store>/
   _next                     # plain text: the next id to allocate, e.g. "17\n"
   nodes/
-    <id>/                   # <id> is a positive integer, zero-padding NOT used in the dir name
+    <id>/                   # a ROOT node. <id> is a positive integer, zero-padding NOT used
       node.md               # YAML frontmatter + Markdown body
-      comments/
+      .comments/            # a COMPONENT (dot-prefixed), not a child node
         0001.md             # one comment per file, seq in filename (zero-padded 4)
         0002.md
+      <child-id>/           # a CHILD node nests inside its parent's dir
+        node.md
+        <grandchild-id>/    # …and so on, arbitrarily deep
+          node.md
 ```
 
 ### `node.md` format
@@ -52,7 +64,7 @@ state: open              # "open" | "closed"
 state_reason:            # "completed" | "not_planned" | null (empty ⇒ null)
 labels: [dormant]        # YAML list of strings; [] when none
 ---
-<Markdown body, marker grammar unchanged — e.g. 🧩 Part-of: #3>
+<Markdown body, marker grammar unchanged — e.g. 🧱 Boundary: #3>
 ```
 
 - Frontmatter carries **exactly** the four fields GitHub used to supply:
@@ -92,15 +104,13 @@ init_store(store: str) -> None
 # Write — each mutating call: lint body → write file(s) → git add -A + commit
 create_node(store: str, title: str, body: str, *, parent: int | None = None,
             labels: list[str] | None = None) -> int
-    # Allocate the next id from _next, write nodes/<id>/node.md (state="open",
-    # state_reason=None, labels=labels or []). `parent`, when given, must already
-    # be expressed as a Part-of marker in `body` — create_node does NOT inject it.
-    # Verify by PARSING, not string match. A PART_OF marker's .value is a
-    # list[int] (collate does `for parent in mk.value`), so flatten:
-    #   ids = [p for m in ctx_core.parse(body).markers
-    #            if m.kind==ctx_core.PART_OF for p in m.value]
-    # accept iff `parent in ids`. Raise ValidationError on mismatch.
-    # Returns new id.
+    # Allocate the next id from _next and write node.md (state="open",
+    # state_reason=None, labels=labels or []). The tree is the filesystem: with
+    # `parent` given, the new node dir nests inside that parent's dir
+    # (<parent path>/<newid>/node.md); otherwise it is a root (nodes/<newid>/).
+    # There is NO Part-of marker — the parent comes from the argument, never the
+    # body. An unknown `parent` (no such node dir) raises StoreError before any
+    # write. Returns new id.
 
 add_comment(store: str, node_id: int, body: str) -> int
     # Append comments/<next-seq>.md. Returns the new seq (int, >= 1).
@@ -142,13 +152,15 @@ writes are explicitly out of scope (design.md:140 "later").
 
 ```python
 Node(number: int, body: str, state: str, state_reason: str | None,
-     labels: set[str], comments: list[Comment] = [], title: str = "")
+     labels: set[str], comments: list[Comment] = [], title: str = "",
+     parent: int | None = None)   # parent = FS-derived tree parent id; None for a root
 ```
 
 ## Consumers that must keep working unchanged
 
-- `ctx_core.collate(nodes) -> Model` — pure; `Model.tree_edges` from `Part-of`
-  markers, `Model.dormant` = {n : node.state=="closed" and "dormant" in labels}.
+- `ctx_core.collate(nodes) -> Model` — pure; `Model.tree_edges` from each node's
+  FS-derived `Node.parent` (not a `Part-of` marker), `Model.dormant` =
+  {n : node.state=="closed" and "dormant" in labels}.
 - `ctx_schedule` — working set = open & not dormant; fidelity/confidence from
   **markers** (`Model.gauges`), not labels.
 - `ctx_mcp/server.py` read tools — pure over the injected `source`; only the

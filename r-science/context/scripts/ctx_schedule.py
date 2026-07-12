@@ -7,7 +7,7 @@ This is the decision of *which node to work on next*, not how to run the move on
 Priority = **centrality × (1 − confidence)** (#32; q1 settled there is no separate
 fidelity-debt term — the walking-skeleton floor already gates on fidelity):
 
-- **fidelity** folds min over non-dormant Part-of children (#33.q1); leaves = own.
+- **fidelity** folds min over non-dormant child nodes (#33.q1); leaves = own.
 - **confidence** is a coarse ordinal: from resolved q/v when the node has any
   (``confidence_inputs``), else the declared ``🧭`` marker, else ``low``.
 - **centrality** is graph-derived and never hand-set: subtree size (how much rests

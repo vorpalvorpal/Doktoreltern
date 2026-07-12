@@ -82,4 +82,4 @@ class TestI8ProseGuard:
 
     def test_non_keyed_bare_keyword_still_flagged(self):
         """Non-keyed bare keywords keep the original I8 behaviour."""
-        assert any(f.key == "I8" for f in self._i8("Part-of: #16\n"))
+        assert any(f.key == "I8" for f in self._i8("Boundary: #16\n"))

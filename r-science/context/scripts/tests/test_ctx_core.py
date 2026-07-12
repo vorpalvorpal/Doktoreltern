@@ -19,16 +19,23 @@ PENDING = "pending — Stage 2 (pure core)"
 # --------------------------------------------------------------------------
 class TestParseInline:
     def test_parses_a_line_anchored_emoji_marker(self):
-        """`🧩 Part-of: #16` → one PART_OF marker carrying issue 16."""
+        """`🧱 Boundary: #16` → one BOUNDARY marker carrying issue 16."""
+        parsed = ctx_core.parse("🧱 Boundary: #16\n")
+        assert parsed.markers == [ctx_core.Marker(ctx_core.BOUNDARY, [16], 1)]
+        assert parsed.findings == []
+
+    def test_retired_part_of_glyph_is_inert(self):
+        """Part-of is retired — the tree is the filesystem (Node.parent). The old
+        🧩 glyph is no longer vocabulary, so the line is inert prose (no marker)."""
         parsed = ctx_core.parse("🧩 Part-of: #16\n")
-        assert parsed.markers == [ctx_core.Marker(ctx_core.PART_OF, [16], 1)]
+        assert parsed.markers == []
         assert parsed.findings == []
 
     def test_parses_one_of_every_glyph(self, inline_markers_text):
-        """All eight inline glyphs register with the right kind, in order."""
+        """All six inline glyphs register with the right kind, in order."""
         kinds = [m.kind for m in ctx_core.parse(inline_markers_text).markers]
         assert kinds == [
-            ctx_core.PART_OF, ctx_core.ASPECT, ctx_core.BOUNDARY,
+            ctx_core.ASPECT, ctx_core.BOUNDARY,
             ctx_core.BLOCKED_BY, ctx_core.DESIGN, ctx_core.EQ, ctx_core.CITES,
         ]
 
@@ -38,8 +45,8 @@ class TestParseInline:
         assert m.value == ["smith2020"]
 
     def test_comma_list_value(self):
-        """`🧩 Part-of: #16, #17` parses both refs."""
-        m = ctx_core.parse("🧩 Part-of: #16, #17\n").markers[0]
+        """`🧱 Boundary: #16, #17` parses both refs."""
+        m = ctx_core.parse("🧱 Boundary: #16, #17\n").markers[0]
         assert m.value == [16, 17]
 
     def test_records_one_based_line_number(self):
@@ -66,13 +73,13 @@ class TestTripleIsCanonical:
 
     def test_emoji_mid_sentence_does_not_register(self):
         """An emoji not at line-start is prose decoration, not a marker."""
-        parsed = ctx_core.parse("As shown 🧩 Part-of: #16 inline in a clause.\n")
+        parsed = ctx_core.parse("As shown 🧱 Boundary: #16 inline in a clause.\n")
         assert parsed.markers == []
 
     def test_leading_whitespace_before_emoji_is_allowed(self):
         """Indented emoji still counts — emoji is first *non-whitespace* token."""
-        parsed = ctx_core.parse("    🧩 Part-of: #16\n")
-        assert parsed.markers == [ctx_core.Marker(ctx_core.PART_OF, [16], 1)]
+        parsed = ctx_core.parse("    🧱 Boundary: #16\n")
+        assert parsed.markers == [ctx_core.Marker(ctx_core.BOUNDARY, [16], 1)]
 
 
 # --------------------------------------------------------------------------
@@ -132,7 +139,7 @@ class TestParseBlock:
 class TestSuppression:
     def test_markers_inside_fenced_code_do_not_register(self):
         """A marker shown as a code example must not be extracted."""
-        text = "Example:\n```\n🧩 Part-of: #16\n```\n"
+        text = "Example:\n```\n🧱 Boundary: #16\n```\n"
         assert ctx_core.parse(text).markers == []
 
     def test_markers_inside_a_quoting_blockquote_do_not_register(self):
@@ -141,7 +148,7 @@ class TestSuppression:
         A standalone blockquote (not the value of an empty-value marker line)
         is inert quoted text; nothing inside it is scanned for markers.
         """
-        text = "Quoting #17 below:\n\n> 🧩 Part-of: #16\n> some quoted prose\n"
+        text = "Quoting #17 below:\n\n> 🧱 Boundary: #16\n> some quoted prose\n"
         assert ctx_core.parse(text).markers == []
 
 
@@ -150,7 +157,6 @@ class TestSuppression:
 # --------------------------------------------------------------------------
 class TestRoundTrip:
     @pytest.mark.parametrize("kind_id, value", [
-        ("PART_OF", [16]),
         ("ASPECT", "numerics"),
         ("BOUNDARY", [17, 18]),
         ("BLOCKED_BY", [12]),
@@ -195,7 +201,7 @@ class TestCoreRobustness:
 
     def test_malformed_value_becomes_a_finding_not_a_crash(self):
         """Glyph+keyword match but value won't parse → recorded, never dropped."""
-        parsed = ctx_core.parse("🧩 Part-of: banana\n")
+        parsed = ctx_core.parse("🧱 Boundary: banana\n")
         assert parsed.markers == []
         assert len(parsed.findings) == 1
         assert parsed.findings[0].line == 1
@@ -286,19 +292,19 @@ class TestGlyphLedDrift:
 # Collation → indices
 # --------------------------------------------------------------------------
 class TestCollate:
-    def test_part_of_becomes_a_tree_edge(self):
-        """A child's Part-of marker yields a parent→child edge."""
+    def test_parent_becomes_a_tree_edge(self):
+        """A node's FS-derived parent yields a parent→child edge."""
         nodes = [
             ctx_core.Node(16, "root\n", "open", None, set()),
-            ctx_core.Node(17, "🧩 Part-of: #16\n", "open", None, set()),
+            ctx_core.Node(17, "child\n", "open", None, set(), parent=16),
         ]
         model = ctx_core.collate(nodes)
         assert (16, 17) in model.tree_edges
 
     def test_blocked_by_is_indexed(self):
         """Blocked-by markers collate into a blocked_by index (mirrors boundaries)."""
-        nodes = [ctx_core.Node(2, "🧩 Part-of: #1\n⛔ Blocked-by: #3, #4\n",
-                               "open", None, set())]
+        nodes = [ctx_core.Node(2, "⛔ Blocked-by: #3, #4\n",
+                               "open", None, set(), parent=1)]
         model = ctx_core.collate(nodes)
         assert model.blocked_by == {2: [3, 4]}
 
@@ -314,8 +320,8 @@ class TestCollate:
         """Dead-end scope = the node whose thread carries it (#22); grouped by subtree."""
         nodes = [
             ctx_core.Node(16, "root\n", "open", None, set()),
-            ctx_core.Node(17, "🧩 Part-of: #16\n🪦 Dead-end: #17.de1\n> tried X, slow\n",
-                          "open", None, set()),
+            ctx_core.Node(17, "🪦 Dead-end: #17.de1\n> tried X, slow\n",
+                          "open", None, set(), parent=16),
         ]
         model = ctx_core.collate(nodes)
         assert 17 in model.dead_ends
