@@ -110,9 +110,19 @@ Two ways to run it, from `docloop/`:
 
 Either way, open the printed URL (default `http://localhost:5173`). "Hand to
 Claude" commits the human's turn and writes `turn.xml`; "Reload" pulls the
-latest committed doc; "Save draft" writes `doc.md` to disk *without*
+latest committed doc; "Save draft" writes the doc to disk *without*
 committing or touching `turn.xml` — it lets the human bank edits across several
 sittings before one real "Hand to Claude" turn.
+
+**Left nav (multi-doc).** The GUI lists every reviewable workspace doc (the
+`dl` discovery rule: tracked ∪ working-tree top-level `*.md`) in a left
+sidebar with a per-doc state (clean / uncommitted draft / untracked); clicking
+one switches the editor to it — `DOCLOOP_DOC` now only picks the *initial*
+doc. Reload / Save draft / Hand to Claude always target the doc the editor is
+on. The sidebar also has a **Nodes** section — a read-only tree of the ctx
+node store, shown only when `DOCLOOP_NODES` points at the store's root
+directory (schema-agnostic v1: one entry per directory, `*.md` files as
+leaves; see `plans/dl-E-gui-nav-sidebar.md`).
 
 **Keep the server alive across sleep.** A server launched as a throwaway
 background job dies when the machine sleeps (or the launching session drops), and

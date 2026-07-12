@@ -97,16 +97,91 @@ body {
 .chip-del { background: var(--del-bg); color: var(--del-fg); }
 .chip-mark { background: var(--mark-bg); border-color: var(--mark-border); }
 
-/* Two-column read layout: document + threads sidebar. */
+/* Three-column read layout: left nav + document + threads sidebar. */
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: 220px minmax(0, 1fr) 320px;
   gap: 1.5rem;
-  max-width: 1100px;
+  max-width: 1340px;
   margin: 0 auto;
   padding: 1.5rem 1rem;
   align-items: start;
 }
+
+/* --- left nav: doc list + node tree (see index.html + src/nav.ts) --- */
+.nav {
+  position: sticky;
+  top: 3.4rem; /* just under the sticky topbar */
+  font-size: 0.85rem;
+  border-right: 1px solid var(--rule);
+  padding-right: 1rem;
+}
+.nav-heading {
+  margin: 0 0 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+#nav-nodes { margin-bottom: 1.2rem; }
+#nav-nodes[hidden] { display: none; }
+.doc-list,
+.node-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* One reviewable doc; the active one gets the accent treatment, non-clean
+   states a small dot marker (tooltip on the dot — see nav.ts). */
+.doc-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.doc-item:hover { background: var(--code-bg); }
+.doc-item.active {
+  background: var(--mark-bg);
+  box-shadow: inset 2px 0 0 var(--accent);
+  font-weight: 600;
+  cursor: default;
+}
+.doc-item .doc-name { flex: 1; min-width: 0; }
+.doc-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.doc-item[data-state='untracked'] .doc-dot { background: var(--muted); }
+
+/* Node tree: nested native <details>; docs are muted, non-interactive leaves. */
+.node-tree details.node { margin: 0.1rem 0; }
+.node-tree details.node details.node,
+.node-tree .node-docs { margin-left: 0.9rem; }
+.node-tree summary {
+  cursor: pointer;
+  user-select: none;
+  padding: 0.15rem 0.3rem;
+  border-radius: 6px;
+}
+.node-tree summary:hover { background: var(--code-bg); }
+.node-state {
+  margin-left: 0.35rem;
+  font-size: 0.68rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  color: var(--muted);
+}
+.node-docs { list-style: none; padding: 0; }
+.node-doc { font-size: 0.78rem; padding: 0.08rem 0.3rem; }
 
 /* ProseMirror's own recommendation (it warns in the console without this):
    without it, a browser can collapse meaningful whitespace — e.g. the
