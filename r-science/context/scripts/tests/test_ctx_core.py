@@ -19,16 +19,23 @@ PENDING = "pending — Stage 2 (pure core)"
 # --------------------------------------------------------------------------
 class TestParseInline:
     def test_parses_a_line_anchored_emoji_marker(self):
-        """`🧩 Part-of: #16` → one PART_OF marker carrying issue 16."""
+        """`🧱 Boundary: #16` → one BOUNDARY marker carrying issue 16."""
+        parsed = ctx_core.parse("🧱 Boundary: #16\n")
+        assert parsed.markers == [ctx_core.Marker(ctx_core.BOUNDARY, [16], 1)]
+        assert parsed.findings == []
+
+    def test_retired_part_of_glyph_is_inert(self):
+        """Part-of is retired — the tree is the filesystem (Node.parent). The old
+        🧩 glyph is no longer vocabulary, so the line is inert prose (no marker)."""
         parsed = ctx_core.parse("🧩 Part-of: #16\n")
-        assert parsed.markers == [ctx_core.Marker(ctx_core.PART_OF, [16], 1)]
+        assert parsed.markers == []
         assert parsed.findings == []
 
     def test_parses_one_of_every_glyph(self, inline_markers_text):
-        """All eight inline glyphs register with the right kind, in order."""
+        """All six inline glyphs register with the right kind, in order."""
         kinds = [m.kind for m in ctx_core.parse(inline_markers_text).markers]
         assert kinds == [
-            ctx_core.PART_OF, ctx_core.ASPECT, ctx_core.BOUNDARY,
+            ctx_core.ASPECT, ctx_core.BOUNDARY,
             ctx_core.BLOCKED_BY, ctx_core.DESIGN, ctx_core.EQ, ctx_core.CITES,
         ]
 
@@ -38,8 +45,8 @@ class TestParseInline:
         assert m.value == ["smith2020"]
 
     def test_comma_list_value(self):
-        """`🧩 Part-of: #16, #17` parses both refs."""
-        m = ctx_core.parse("🧩 Part-of: #16, #17\n").markers[0]
+        """`🧱 Boundary: #16, #17` parses both refs."""
+        m = ctx_core.parse("🧱 Boundary: #16, #17\n").markers[0]
         assert m.value == [16, 17]
 
     def test_records_one_based_line_number(self):
@@ -66,13 +73,13 @@ class TestTripleIsCanonical:
 
     def test_emoji_mid_sentence_does_not_register(self):
         """An emoji not at line-start is prose decoration, not a marker."""
-        parsed = ctx_core.parse("As shown 🧩 Part-of: #16 inline in a clause.\n")
+        parsed = ctx_core.parse("As shown 🧱 Boundary: #16 inline in a clause.\n")
         assert parsed.markers == []
 
     def test_leading_whitespace_before_emoji_is_allowed(self):
         """Indented emoji still counts — emoji is first *non-whitespace* token."""
-        parsed = ctx_core.parse("    🧩 Part-of: #16\n")
-        assert parsed.markers == [ctx_core.Marker(ctx_core.PART_OF, [16], 1)]
+        parsed = ctx_core.parse("    🧱 Boundary: #16\n")
+        assert parsed.markers == [ctx_core.Marker(ctx_core.BOUNDARY, [16], 1)]
 
 
 # --------------------------------------------------------------------------
@@ -132,7 +139,7 @@ class TestParseBlock:
 class TestSuppression:
     def test_markers_inside_fenced_code_do_not_register(self):
         """A marker shown as a code example must not be extracted."""
-        text = "Example:\n```\n🧩 Part-of: #16\n```\n"
+        text = "Example:\n```\n🧱 Boundary: #16\n```\n"
         assert ctx_core.parse(text).markers == []
 
     def test_markers_inside_a_quoting_blockquote_do_not_register(self):
@@ -141,7 +148,7 @@ class TestSuppression:
         A standalone blockquote (not the value of an empty-value marker line)
         is inert quoted text; nothing inside it is scanned for markers.
         """
-        text = "Quoting #17 below:\n\n> 🧩 Part-of: #16\n> some quoted prose\n"
+        text = "Quoting #17 below:\n\n> 🧱 Boundary: #16\n> some quoted prose\n"
         assert ctx_core.parse(text).markers == []
 
 
@@ -150,7 +157,6 @@ class TestSuppression:
 # --------------------------------------------------------------------------
 class TestRoundTrip:
     @pytest.mark.parametrize("kind_id, value", [
-        ("PART_OF", [16]),
         ("ASPECT", "numerics"),
         ("BOUNDARY", [17, 18]),
         ("BLOCKED_BY", [12]),
@@ -195,7 +201,7 @@ class TestCoreRobustness:
 
     def test_malformed_value_becomes_a_finding_not_a_crash(self):
         """Glyph+keyword match but value won't parse → recorded, never dropped."""
-        parsed = ctx_core.parse("🧩 Part-of: banana\n")
+        parsed = ctx_core.parse("🧱 Boundary: banana\n")
         assert parsed.markers == []
         assert len(parsed.findings) == 1
         assert parsed.findings[0].line == 1
@@ -207,22 +213,98 @@ class TestCoreRobustness:
 
 
 # --------------------------------------------------------------------------
+# Glyph-led marker drift — a correct glyph with a wrong/missing keyword must
+# NOT be silently dropped (regression: a whole node's ⚖️/🎯/✅ markers vanished).
+# --------------------------------------------------------------------------
+class TestGlyphLedDrift:
+    def test_wrong_keyword_alt_fires_finding(self):
+        """`⚖️ alt:` (glyph ok, keyword should be `Alternative`) → finding, no marker."""
+        parsed = ctx_core.parse("⚖️ alt: #3.alt1 IA — viable\n")
+        assert parsed.markers == []
+        assert len(parsed.findings) == 1
+        assert parsed.findings[0].key == "parse"
+        assert parsed.findings[0].line == 1
+
+    def test_wrong_keyword_fd_and_v_fire_findings(self):
+        """`🎯 fd:` and `✅ v:` are the same drift class — each fires a finding."""
+        fd = ctx_core.parse("🎯 fd: #3.fd1 declared do the thing\n")
+        v = ctx_core.parse("✅ v: #3.v1 met checked out\n")
+        assert fd.markers == [] and len(fd.findings) == 1
+        assert v.markers == [] and len(v.findings) == 1
+
+    def test_correct_alternative_keyword_parses_with_no_new_finding(self):
+        """The canonical `⚖️ Alternative:` still parses to a Marker, no finding."""
+        parsed = ctx_core.parse("⚖️ Alternative: #3.alt1 IA — viable\n")
+        assert parsed.findings == []
+        assert len(parsed.markers) == 1
+        assert parsed.markers[0].kind == ctx_core.ALTERNATIVE
+
+    def test_enum_value_failure_still_fires_exactly_one_finding(self):
+        """`🧭 Confidence: medium`: keyword matches, value fails enum → exactly one
+        finding. The new glyph-led guard must NOT double-fire on an already-matched line."""
+        parsed = ctx_core.parse("🧭 Confidence: medium\n")
+        assert parsed.markers == []
+        assert len(parsed.findings) == 1
+
+    def test_non_marker_leading_emoji_is_left_as_prose(self):
+        """A leading NON-marker emoji is ordinary prose — no finding, no marker."""
+        parsed = ctx_core.parse("🔥 hot take here\n")
+        assert parsed.markers == []
+        assert parsed.findings == []
+
+    def test_glyph_led_line_suppressed_in_fence_and_blockquote(self):
+        """Fence/blockquote suppression sits ahead of the new guard — no finding."""
+        fenced = ctx_core.parse("```\n⚖️ alt: #3.alt1 IA\n```\n")
+        assert fenced.markers == [] and fenced.findings == []
+        quoted = ctx_core.parse("> ⚖️ alt: #3.alt1 IA\n> quoted prose\n")
+        assert quoted.markers == [] and quoted.findings == []
+
+    def test_glyph_mid_sentence_does_not_fire(self):
+        """The glyph must be the first non-whitespace token; mid-sentence is prose."""
+        parsed = ctx_core.parse("see ⚖️ Alternative: above\n")
+        assert parsed.markers == []
+        assert parsed.findings == []
+
+    def test_bare_glyph_alone_stays_inert(self):
+        """A bare glyph (no `keyword:` shape) is not attempted-marker drift → inert.
+
+        The guard fires on the marker *shape* `glyph keyword:`, not on any glyph —
+        so a lone glyph or a glyph with no colon is left as prose, not flagged.
+        """
+        bare = ctx_core.parse("⚖️\n")
+        assert bare.markers == [] and bare.findings == []
+        trailing = ctx_core.parse("⚖️ \n")
+        assert trailing.markers == [] and trailing.findings == []
+
+    def test_decorative_glyph_prose_does_not_fire(self):
+        """Rhetorical/decorative use of a vocab glyph (no `keyword:` shape) stays
+        inert — the drift guard must not cry wolf on ordinary prose that happens to
+        open with ✅/❓/🔒. (Preserves the documented behaviour of
+        `test_bare_emoji_without_keyword_does_not_register`.)"""
+        for line in ("✅ done the dishes\n", "❓ why is this so slow?\n",
+                     "🔒 the door is locked\n"):
+            parsed = ctx_core.parse(line)
+            assert parsed.markers == [], line
+            assert parsed.findings == [], line
+
+
+# --------------------------------------------------------------------------
 # Collation → indices
 # --------------------------------------------------------------------------
 class TestCollate:
-    def test_part_of_becomes_a_tree_edge(self):
-        """A child's Part-of marker yields a parent→child edge."""
+    def test_parent_becomes_a_tree_edge(self):
+        """A node's FS-derived parent yields a parent→child edge."""
         nodes = [
             ctx_core.Node(16, "root\n", "open", None, set()),
-            ctx_core.Node(17, "🧩 Part-of: #16\n", "open", None, set()),
+            ctx_core.Node(17, "child\n", "open", None, set(), parent=16),
         ]
         model = ctx_core.collate(nodes)
         assert (16, 17) in model.tree_edges
 
     def test_blocked_by_is_indexed(self):
         """Blocked-by markers collate into a blocked_by index (mirrors boundaries)."""
-        nodes = [ctx_core.Node(2, "🧩 Part-of: #1\n⛔ Blocked-by: #3, #4\n",
-                               "open", None, set())]
+        nodes = [ctx_core.Node(2, "⛔ Blocked-by: #3, #4\n",
+                               "open", None, set(), parent=1)]
         model = ctx_core.collate(nodes)
         assert model.blocked_by == {2: [3, 4]}
 
@@ -238,8 +320,8 @@ class TestCollate:
         """Dead-end scope = the node whose thread carries it (#22); grouped by subtree."""
         nodes = [
             ctx_core.Node(16, "root\n", "open", None, set()),
-            ctx_core.Node(17, "🧩 Part-of: #16\n🪦 Dead-end: #17.de1\n> tried X, slow\n",
-                          "open", None, set()),
+            ctx_core.Node(17, "🪦 Dead-end: #17.de1\n> tried X, slow\n",
+                          "open", None, set(), parent=16),
         ]
         model = ctx_core.collate(nodes)
         assert 17 in model.dead_ends

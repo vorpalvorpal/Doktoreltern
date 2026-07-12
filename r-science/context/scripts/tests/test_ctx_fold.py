@@ -10,9 +10,9 @@ ctx_core = pytest.importorskip("ctx_core")
 C = ctx_core
 
 
-def _node(number, body, comments=(), state="open", reason=None, labels=()):
+def _node(number, body, comments=(), state="open", reason=None, labels=(), parent=None):
     cs = [C.Comment(seq, text) for seq, text in comments]
-    return C.Node(number, body, state, reason, set(labels), cs)
+    return C.Node(number, body, state, reason, set(labels), cs, parent=parent)
 
 
 class TestKeyedFold:
@@ -32,7 +32,7 @@ class TestKeyedFold:
         assert len(model.registries[C.FUTURE]) == 2
 
     def test_dead_end_registry_and_index(self):
-        node = _node(17, "🧩 Part-of: #16\n🪦 Dead-end: #17.de1\n> tried X\n")
+        node = _node(17, "🪦 Dead-end: #17.de1\n> tried X\n", parent=16)
         model = C.collate([_node(16, "root\n"), node])
         assert 17 in model.dead_ends
         assert model.registries[C.DEAD_END][0][0] == 17
@@ -54,22 +54,22 @@ class TestSeal:
 
     def test_unseal_inherits_to_children(self):
         parent = _node(16, "🔒 Seal: unsealed @rjs 2026-06-16\n")
-        child = _node(17, "🧩 Part-of: #16\n")
+        child = _node(17, "child\n", parent=16)
         model = C.collate([parent, child])
         assert model.seal[16] == "unsealed"
         assert model.seal[17] == "unsealed"        # inherited
 
     def test_child_can_reseal_within_unsealed(self):
         parent = _node(16, "🔒 Seal: unsealed @rjs 2026-06-16\n")
-        child = _node(17, "🧩 Part-of: #16\n🔒 Seal: sealed @rjs 2026-06-16\n")
+        child = _node(17, "🔒 Seal: sealed @rjs 2026-06-16\n", parent=16)
         model = C.collate([parent, child])
         assert model.seal[17] == "sealed"
 
 
 class TestDormant:
     def test_closed_dormant_node_is_dormant(self):
-        node = _node(18, "🧩 Part-of: #16\n", state="closed", reason="not_planned",
-                     labels=["dormant"])
+        node = _node(18, "x\n", state="closed", reason="not_planned",
+                     labels=["dormant"], parent=16)
         model = C.collate([_node(16, "root\n"), node])
         assert 18 in model.dormant
 

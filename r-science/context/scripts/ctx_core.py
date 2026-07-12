@@ -6,9 +6,10 @@ a pure function of its arguments; same input → same output.
 Public API
 ----------
 Kind constants (str):
-    PART_OF, ASPECT, BOUNDARY, BLOCKED_BY, DESIGN, EQ, CITES, DEAD_END,
+    ASPECT, BOUNDARY, BLOCKED_BY, DESIGN, EQ, CITES, DEAD_END,
     CONFIDENCE, FIDELITY, SEAL, QUESTION, VALIDATION, ALTERNATIVE, FUTURE, REFINE,
     OPT, ARTEFACT
+    (The node tree is the filesystem nesting — Node.parent — not a Part-of marker.)
     (FUTURE = expansion, prefix `fut`, optional [v<n>] tag; REFINE = correctness-bearing
      accuracy lever, prefix `fd`; OPT = speed lever, prefix `opt`.)
 
@@ -25,7 +26,7 @@ Functions:
     collate(nodes) -> Model
 
 Mapping:
-    CHECKS: dict[str, Callable[[Model, Platform], list[Finding]]]  "I1".."I8"
+    CHECKS: dict[str, Callable[[Model, Platform], list[Finding]]]  "I3".."I13"
 """
 
 from __future__ import annotations
@@ -40,7 +41,6 @@ from typing import Callable
 # Kind constants
 # ---------------------------------------------------------------------------
 
-PART_OF = "part_of"
 ASPECT = "aspect"
 BOUNDARY = "boundary"
 BLOCKED_BY = "blocked_by"
@@ -77,7 +77,6 @@ def _norm(glyph: str) -> str:
 
 
 # Rendered glyphs (no trailing U+FE0F — normalised form).
-_G_PART_OF   = _norm("🧩")
 _G_ASPECT    = _norm("🏷️")   # may or may not have FE0F; _norm strips it
 _G_BOUNDARY  = _norm("🧱")
 _G_BLOCKED   = _norm("⛔")
@@ -257,7 +256,6 @@ def _keyed_inline_is_id_only(inline: str, status_set: frozenset) -> bool:
 # Table: (normalised_glyph, keyword_regex, kind, parser, is_block_only)
 # keyword_regex is case-insensitive and matched after the glyph.
 _VOCAB: list[tuple[str, str, str, Callable, bool]] = [
-    (_G_PART_OF,  r"Part-of",   PART_OF,   _parse_issue_list,  False),
     (_G_ASPECT,   r"aspect",    ASPECT,    _parse_str,         False),
     (_G_BOUNDARY, r"Boundary",  BOUNDARY,  _parse_issue_list,  False),
     (_G_BLOCKED,  r"Blocked-by",BLOCKED_BY,_parse_issue_list,  False),
@@ -353,6 +351,10 @@ class Node:
 
     `comments` is the append-only stream after the body; collate folds
     [body @ seq 0] + comments latest-wins. Defaults empty for body-only nodes.
+
+    `parent` is the tree parent's id, derived from the filesystem nesting
+    (the enclosing numeric node dir); ``None`` for a root. This — not a Part-of
+    marker — is the single source of the node tree.
     """
     number: int
     body: str
@@ -361,6 +363,7 @@ class Node:
     labels: set           # set[str]
     comments: list = field(default_factory=list)  # list[Comment]
     title: str = ""       # the GitHub issue title (canonical node title; "" if unfetched)
+    parent: int | None = None  # FS-derived tree parent id; None for a root
 
 
 @dataclass
@@ -372,7 +375,12 @@ class Parsed:
 
 @dataclass
 class Platform:
-    """Platform-derived index the linter diffs against in-text markers."""
+    """Platform-derived index the linter diffs against in-text markers.
+
+    Vestigial post-migration (A5/A2): there is no platform anymore, so this is
+    always constructed empty. I3-I9/I12/I13 keep the `(model, platform)`
+    signature but ignore it. Slated for a later cleanup, not this migration.
+    """
     subissue_edges: set   # set of (parent, child) int tuples
     labels: dict          # dict[int, set[str]]
     settable: bool        # whether the platform supports setting sub-issue edges
@@ -477,6 +485,19 @@ for _entry in _VOCAB:
     _glyph, _kw, _kind, _parser, _block_only = _entry
     _pat = re.compile(r"^[ \t]*" + re.escape(_kw) + r":[ \t]*", re.IGNORECASE)
     _BARE_KW_RE[_kind] = _pat
+
+# Glyph-led drift guard: a known marker glyph as the first non-whitespace token,
+# followed by a keyword-like token and a colon (same FE0F-optional handling as
+# _MARKER_RE). This is the marker *shape* `glyph keyword:` — so a line matching it
+# but matching no _MARKER_RE entry is an attempted marker with the WRONG keyword
+# (the observed `⚖️ alt:` drift) and must surface as a Finding, not vanish as inert
+# text. The `keyword:` requirement is deliberate: it distinguishes a drifted marker
+# from decorative/rhetorical prose that merely starts with a vocab glyph
+# (`✅ done the dishes`, `❓ why so slow?`), which stays inert as before.
+_GLYPH_LED_RE = re.compile(
+    r"^[ \t]*(?:" + "|".join(re.escape(_g) + r"️?" for _g, *_ in _VOCAB) + r")"
+    r"[ \t]*[\w-]+:"
+)
 
 
 
@@ -586,6 +607,16 @@ def parse(text: str) -> Parsed:
             break
 
         if not matched:
+            # A known marker glyph led the line but no vocab regex matched: the
+            # keyword is wrong/missing or the line is malformed. Surface it rather
+            # than silently passing it through as inert prose (regression guard).
+            if _GLYPH_LED_RE.match(raw_line):
+                findings.append(Finding(
+                    0, "parse",
+                    f"emoji-led marker line not recognised (keyword mismatch or "
+                    f"malformed): {raw_line.strip()!r}",
+                    line=lineno,
+                ))
             i += 1
 
     return Parsed(markers=markers, findings=findings)
@@ -597,7 +628,6 @@ def parse(text: str) -> Parsed:
 
 # Keyword display strings (matching the fixture text in tests).
 _KIND_TO_KW: dict[str, str] = {
-    PART_OF:   "Part-of",
     ASPECT:    "aspect",
     BOUNDARY:  "Boundary",
     BLOCKED_BY:"Blocked-by",
@@ -621,7 +651,6 @@ _KIND_TO_KW: dict[str, str] = {
 
 # Glyph for rendering (normalised, no trailing FE0F).
 _KIND_TO_GLYPH: dict[str, str] = {
-    PART_OF:   _G_PART_OF,
     ASPECT:    _G_ASPECT,
     BOUNDARY:  _G_BOUNDARY,
     BLOCKED_BY:_G_BLOCKED,
@@ -646,7 +675,7 @@ _KIND_TO_GLYPH: dict[str, str] = {
 
 def _render_value(kind: str, value: object) -> str:
     """Render a non-keyed marker value to its string representation."""
-    if kind in (PART_OF, BOUNDARY, BLOCKED_BY):
+    if kind in (BOUNDARY, BLOCKED_BY):
         # list[int] → "#16, #17"
         assert isinstance(value, list)
         return ", ".join(f"#{n}" for n in value)
@@ -714,6 +743,11 @@ def collate(nodes: list) -> Model:
     for node in nodes:
         model.nodes[node.number] = node
 
+        # The tree is the filesystem nesting: a node's parent is its enclosing
+        # numeric node dir (Node.parent), not a Part-of marker.
+        if node.parent is not None:
+            model.tree_edges.add((node.parent, node.number))
+
         # The node's marker stream in seq order — the body is seq 0.
         stream = [(0, mk) for mk in parse(node.body).markers]
         for c in sorted(node.comments, key=lambda c: c.seq):
@@ -735,9 +769,6 @@ def collate(nodes: list) -> Model:
                 if SEAL not in gauge_seq or seq >= gauge_seq[SEAL]:
                     gauge_seq[SEAL] = seq
                     model.seal_own[node.number] = mk.value.split()[0]
-            elif mk.kind == PART_OF:
-                for parent in mk.value:
-                    model.tree_edges.add((parent, node.number))
             elif mk.kind == ASPECT:
                 if mk.value not in model.aspects[node.number]:
                     model.aspects[node.number].append(mk.value)
@@ -868,56 +899,6 @@ def _detect_cycles(model: Model) -> list:
         if d == -1:
             in_cycle.append(node)
     return in_cycle
-
-
-def _check_i1(model: Model, platform: Platform) -> list:
-    """I1: Part-of marker ↔ platform sub-issue edge.
-
-    Missing edge when settable → finding; when not settable → info.
-    """
-    findings: list = []
-    for parent, child in model.tree_edges:
-        if (parent, child) not in platform.subissue_edges:
-            sev = "finding" if platform.settable else "info"
-            findings.append(Finding(
-                child, "I1",
-                f"Part-of: #{parent} has no matching platform sub-issue edge",
-                severity=sev,
-            ))
-    # Reverse: platform edge with no corresponding Part-of marker.
-    for parent, child in platform.subissue_edges:
-        if (parent, child) not in model.tree_edges:
-            sev = "finding" if platform.settable else "info"
-            findings.append(Finding(
-                child, "I1",
-                f"platform sub-issue edge #{parent}→#{child} has no Part-of marker",
-                severity=sev,
-            ))
-    return findings
-
-
-def _check_i2(model: Model, platform: Platform) -> list:
-    """I2: aspect marker ↔ aspect:* label, both directions."""
-    findings: list = []
-    for issue, node in model.nodes.items():
-        text_aspects = set(model.aspects.get(issue, []))
-        label_aspects = {
-            lbl.split(":", 1)[1]
-            for lbl in platform.labels.get(issue, set())
-            if lbl.startswith("aspect:")
-        }
-
-        for asp in text_aspects - label_aspects:
-            findings.append(Finding(
-                issue, "I2",
-                f"text has 'aspect: {asp}' but no label 'aspect:{asp}'",
-            ))
-        for asp in label_aspects - text_aspects:
-            findings.append(Finding(
-                issue, "I2",
-                f"label 'aspect:{asp}' has no corresponding text marker",
-            ))
-    return findings
 
 
 def _check_i3(model: Model, platform: Platform) -> list:
@@ -1112,12 +1093,37 @@ def _check_i13(model: Model, platform: Platform) -> list:
     return findings
 
 
+def _check_i14(model: Model, platform: Platform) -> list:
+    """I14: confidence 'high' requires fidelity 'correct'.
+
+    Confidence in the scheduler axis means confidence *that the node is correct*
+    (it gates deepening: priority = centrality × (1 − confidence)). A node whose
+    own fidelity is below 'correct' — a stub/interface/mock — cannot honestly carry
+    'high' confidence; doing so zeroes its priority and makes a known-mock node look
+    done to the scheduler. This catches the floor-pass authoring slip where 'high'
+    meant "confident in the interface" rather than "confident it is correct".
+    """
+    findings: list = []
+    for issue in model.nodes:
+        gauge = model.gauges.get(issue, {})
+        fidelity = gauge.get("fidelity")
+        # Only an *explicit* contradiction: a declared fidelity below 'correct'
+        # carrying 'high'. A node with no fidelity marker is off the ladder and
+        # exempt (pure design/discussion nodes may be high-confidence).
+        if (gauge.get("confidence") == "high"
+                and fidelity is not None and fidelity != "correct"):
+            findings.append(Finding(
+                issue, "I14",
+                f"confidence 'high' but fidelity '{fidelity}' — high confidence "
+                f"claims correctness; keep it ≤ tentative until fidelity is 'correct'",
+            ))
+    return findings
+
+
 # I10 (cross-reference resolution) and I11 (value-set validity) are deferred:
 # value validity is enforced at parse time, and prose cross-reference scanning is
 # noisy — see context-spec.md §7.
 CHECKS: dict = {
-    "I1": _check_i1,
-    "I2": _check_i2,
     "I3": _check_i3,
     "I4": _check_i4,
     "I5": _check_i5,
@@ -1127,4 +1133,5 @@ CHECKS: dict = {
     "I9": _check_i9,
     "I12": _check_i12,
     "I13": _check_i13,
+    "I14": _check_i14,
 }

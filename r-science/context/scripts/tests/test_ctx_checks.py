@@ -37,8 +37,8 @@ class TestI12Dormant:
 class TestI13FidelityRollUp:
     def _tree(self, child_fid, child_state="open", child_reason=None, child_labels=()):
         parent = C.Node(16, "📊 Fidelity: correct\n", "open", None, set())
-        child = C.Node(17, f"🧩 Part-of: #16\n📊 Fidelity: {child_fid}\n",
-                       child_state, child_reason, set(child_labels))
+        child = C.Node(17, f"📊 Fidelity: {child_fid}\n",
+                       child_state, child_reason, set(child_labels), parent=16)
         return [parent, child]
 
     def test_correct_parent_with_lagging_child_flags(self):
@@ -51,3 +51,22 @@ class TestI13FidelityRollUp:
         nodes = self._tree("stub", child_state="closed", child_reason="not_planned",
                            child_labels=["dormant"])
         assert all(x.key != "I13" for x in _f("I13", nodes))
+
+
+class TestI14GaugeConsistency:
+    def test_high_confidence_on_a_mock_node_flags(self):
+        node = C.Node(1, "📊 Fidelity: interface\n🧭 Confidence: high\n", "open", None, set())
+        assert any(x.key == "I14" for x in _f("I14", [node]))
+
+    def test_high_confidence_on_a_correct_node_is_clean(self):
+        node = C.Node(1, "📊 Fidelity: correct\n🧭 Confidence: high\n", "open", None, set())
+        assert all(x.key != "I14" for x in _f("I14", [node]))
+
+    def test_tentative_confidence_on_a_mock_node_is_clean(self):
+        node = C.Node(1, "📊 Fidelity: interface\n🧭 Confidence: tentative\n", "open", None, set())
+        assert all(x.key != "I14" for x in _f("I14", [node]))
+
+    def test_high_confidence_without_a_fidelity_marker_is_exempt(self):
+        # off the fidelity ladder → pure design/discussion node, not flagged.
+        node = C.Node(1, "🧭 Confidence: high\n", "open", None, set())
+        assert all(x.key != "I14" for x in _f("I14", [node]))

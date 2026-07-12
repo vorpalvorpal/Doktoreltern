@@ -1,12 +1,15 @@
-"""Behaviour spec for the linter — invariants I1–I8, exit codes, output format.
+"""Behaviour spec for the linter — invariants I3–I8, exit codes, output format.
 
 Maps to plan §6 "Linter". Each invariant is one named, independently testable
 check exposed as ``ctx_core.CHECKS["I3"](model, platform) -> [Finding]``. The
 CLI wiring (exit codes, finding format) lives in ``ctx_lint``.
 
 Findings carry a severity: "finding" flips the exit code, "warning"/"info" do
-not. I1's best-effort rule (edge unsettable in this environment) and I6's
-depth-7 warning are the two places that distinction is load-bearing.
+not. I6's depth-7 warning is where that distinction is load-bearing.
+
+I1 (Part-of <-> platform sub-issue edge) and I2 (aspect marker <-> aspect:*
+label) were deleted in the store migration (CONTRACT.md A5): both diffed
+in-text markers against GitHub platform state, which no longer exists.
 
 Pending until Stage 4 (linter). The CHECKS themselves are Stage 2 (core).
 """
@@ -20,12 +23,19 @@ CLI = "pending — Stage 4 (linter CLI)"
 
 
 def model_and_platform(data):
-    """Build (Model, Platform) from the plain-dict fixture shape."""
+    """Build (Model, Platform) from the plain-dict fixture shape.
+
+    The node tree is the filesystem nesting (Node.parent), so the fixture carries
+    an optional ``parents`` dict (child id → parent id) rather than a Part-of
+    marker in the body.
+    """
+    parents = data.get("parents", {})
     nodes = []
     for number, body in data["bodies"].items():
         state, reason = data["states"].get(number, ("open", None))
         nodes.append(ctx_core.Node(number, body, state, reason,
-                                   data["labels"].get(number, set())))
+                                   data["labels"].get(number, set()),
+                                   parent=parents.get(number)))
     model = ctx_core.collate(nodes)
     platform = ctx_core.Platform(
         subissue_edges=data["subissue_edges"],
@@ -40,51 +50,13 @@ def severities(findings, level="finding"):
 
 
 # --------------------------------------------------------------------------
-# I1 — Part-of ↔ platform sub-issue edge (best-effort)
-# --------------------------------------------------------------------------
-class TestI1:
-    def test_clean_when_edge_matches_text(self, two_node_tree):
-        model, platform = model_and_platform(two_node_tree)
-        assert ctx_core.CHECKS["I1"](model, platform) == []
-
-    def test_finding_when_edge_missing_and_settable(self, two_node_tree):
-        two_node_tree["subissue_edges"] = set()
-        two_node_tree["settable"] = True
-        model, platform = model_and_platform(two_node_tree)
-        assert severities(ctx_core.CHECKS["I1"](model, platform), "finding")
-
-    def test_info_not_finding_when_edge_unsettable(self, two_node_tree):
-        """Missing edge in an environment that can't set one is info, not failure."""
-        two_node_tree["subissue_edges"] = set()
-        two_node_tree["settable"] = False
-        model, platform = model_and_platform(two_node_tree)
-        result = ctx_core.CHECKS["I1"](model, platform)
-        assert severities(result, "finding") == []
-        assert severities(result, "info")
-
-
-# --------------------------------------------------------------------------
-# I2 — aspect marker ↔ aspect:* label, both directions
-# --------------------------------------------------------------------------
-class TestI2:
-    def test_finding_when_text_aspect_has_no_label(self, two_node_tree):
-        two_node_tree["labels"][17] = set()          # drop aspect:numerics label
-        model, platform = model_and_platform(two_node_tree)
-        assert severities(ctx_core.CHECKS["I2"](model, platform))
-
-    def test_finding_when_label_has_no_text_aspect(self, two_node_tree):
-        two_node_tree["labels"][17] = {"aspect:numerics", "aspect:io"}  # io unmarked
-        model, platform = model_and_platform(two_node_tree)
-        assert severities(ctx_core.CHECKS["I2"](model, platform))
-
-
-# --------------------------------------------------------------------------
 # I3 — exactly one tree, no cycles (cycle detection is ours)
 # --------------------------------------------------------------------------
 class TestI3:
     def test_detects_a_cycle(self):
         data = {
-            "bodies": {16: "🧩 Part-of: #17\n", 17: "🧩 Part-of: #16\n"},
+            "bodies": {16: "a\n", 17: "b\n"},
+            "parents": {16: 17, 17: 16},   # 16↔17 mutual parents = a cycle
             "states": {}, "subissue_edges": set(),
             "labels": {}, "settable": True,
         }
@@ -92,11 +64,15 @@ class TestI3:
         assert severities(ctx_core.CHECKS["I3"](model, platform))
 
     def test_finding_when_node_has_two_parents(self):
-        data = {
-            "bodies": {17: "🧩 Part-of: #16, #18\n"},
-            "states": {}, "subissue_edges": set(), "labels": {}, "settable": True,
-        }
-        model, platform = model_and_platform(data)
+        # A node has exactly one parent dir on disk, so two parents can't arise
+        # from real nesting; exercise the check directly by adding a second edge.
+        model = ctx_core.collate([
+            ctx_core.Node(16, "a\n", "open", None, set()),
+            ctx_core.Node(18, "b\n", "open", None, set()),
+            ctx_core.Node(17, "c\n", "open", None, set(), parent=16),
+        ])
+        model.tree_edges.add((18, 17))
+        platform = ctx_core.Platform(set(), {}, True)
         assert severities(ctx_core.CHECKS["I3"](model, platform))
 
 
@@ -123,7 +99,7 @@ class TestI4:
 class TestI5:
     def test_finding_when_boundary_on_a_leaf(self):
         data = {
-            "bodies": {17: "🧩 Part-of: #16\n🧱 Boundary: #18\n"},  # 17 has no children
+            "bodies": {17: "🧱 Boundary: #18\n"},  # 17 has no children
             "states": {}, "subissue_edges": set(), "labels": {}, "settable": True,
         }
         model, platform = model_and_platform(data)
@@ -131,7 +107,8 @@ class TestI5:
 
     def test_finding_when_boundary_names_a_non_child(self):
         data = {
-            "bodies": {16: "🧱 Boundary: #99\n", 17: "🧩 Part-of: #16\n"},
+            "bodies": {16: "🧱 Boundary: #99\n", 17: "child\n"},
+            "parents": {17: 16},
             "states": {}, "subissue_edges": {(16, 17)}, "labels": {}, "settable": True,
         }
         model, platform = model_and_platform(data)
@@ -143,12 +120,14 @@ class TestI5:
 # --------------------------------------------------------------------------
 class TestI6:
     def _chain(self, depth):
-        """A root + `depth` descendants in a straight Part-of chain."""
+        """A root + `depth` descendants in a straight nesting chain (Node.parent)."""
         bodies = {1: "root\n"}
+        parents = {}
         for n in range(2, depth + 2):
-            bodies[n] = f"🧩 Part-of: #{n - 1}\n"
-        return {"bodies": bodies, "states": {}, "subissue_edges": set(),
-                "labels": {}, "settable": True}
+            bodies[n] = "x\n"
+            parents[n] = n - 1
+        return {"bodies": bodies, "parents": parents, "states": {},
+                "subissue_edges": set(), "labels": {}, "settable": True}
 
     def test_warning_at_depth_seven(self):
         model, platform = model_and_platform(self._chain(7))
@@ -179,7 +158,7 @@ class TestI7:
 class TestI8:
     def test_flags_a_sigil_less_keyword(self):
         data = {
-            "bodies": {17: "Part-of: #16\n"},   # keyword, no emoji
+            "bodies": {17: "Boundary: #16\n"},   # keyword, no emoji
             "states": {}, "subissue_edges": set(), "labels": {}, "settable": True,
         }
         model, platform = model_and_platform(data)
@@ -189,12 +168,12 @@ class TestI8:
     def test_does_not_auto_insert_the_emoji(self):
         """The linter flags the repair; it must never invent the marker."""
         data = {
-            "bodies": {17: "Part-of: #16\n"},
+            "bodies": {17: "Boundary: #16\n"},
             "states": {}, "subissue_edges": set(), "labels": {}, "settable": True,
         }
         model, platform = model_and_platform(data)
-        # The sigil-less line did not become a tree edge behind our backs.
-        assert (16, 17) not in model.tree_edges
+        # The sigil-less line did not become a Boundary marker behind our backs.
+        assert 17 not in model.boundaries
 
 
 # --------------------------------------------------------------------------

@@ -8,15 +8,17 @@ earlier one under the fold, and the effective seal inherits to descendants unles
 a child re-sets it.
 
 Usage:
-    ctx_seal.py <issue> sealed   [--repo owner/repo] [--who @name]
-    ctx_seal.py <issue> unsealed [--repo owner/repo] [--who @name]
+    ctx_seal.py <issue> sealed   [--store PATH] [--who @name]
+    ctx_seal.py <issue> unsealed [--store PATH] [--who @name]
 """
 from __future__ import annotations
 
 import argparse
 import datetime
-import subprocess
+import os
 import sys
+
+import ctx_store
 
 
 def seal_comment(state: str, who: str | None = None, date: str | None = None) -> str:
@@ -31,36 +33,22 @@ def seal_comment(state: str, who: str | None = None, date: str | None = None) ->
             f"descendants unless a child re-sets it.")
 
 
-def _gh(args: list, **kw):
-    return subprocess.run(["gh", *args], text=True, check=True, **kw)
-
-
-def _current_repo() -> str:
-    out = _gh(["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
-              capture_output=True).stdout
-    return out.strip()
-
-
-def _current_user() -> str | None:
-    try:
-        out = _gh(["api", "user", "-q", ".login"], capture_output=True).stdout.strip()
-        return f"@{out}" if out else None
-    except subprocess.CalledProcessError:
-        return None
-
-
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ctx_seal")
     ap.add_argument("issue", type=int)
     ap.add_argument("state", choices=["sealed", "unsealed"])
-    ap.add_argument("--repo", default=None)
+    ap.add_argument("--store", default=None)
     ap.add_argument("--who", default=None)
     args = ap.parse_args(argv)
 
-    repo = args.repo or _current_repo()
-    who = args.who or _current_user()
+    store = args.store or os.environ.get("CTX_STORE")
+    if not store:
+        print("ctx_seal: no store given (pass --store or set CTX_STORE)", file=sys.stderr)
+        return 1
+
+    who = args.who
     body = seal_comment(args.state, who)
-    _gh(["issue", "comment", str(args.issue), "--repo", repo, "--body", body])
+    ctx_store.add_comment(store, args.issue, body)
     print(f"#{args.issue}: {args.state}" + (f" by {who}" if who else ""))
     return 0
 

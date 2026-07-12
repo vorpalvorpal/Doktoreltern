@@ -15,6 +15,7 @@ Maps to #24 (substrate: consistency linter).
 """
 from __future__ import annotations
 
+import os
 import sys
 
 import ctx_core
@@ -36,48 +37,33 @@ def run_checks(model, platform) -> list:
     return findings
 
 
-def _platform_from(repo: str, nodes: list):
-    """Best-effort Platform index from the live repo (sub-issue edges + labels).
+def _platform_from(store: str, nodes: list):
+    """Empty Platform: there is no platform to derive one from post-migration.
 
-    Derived, not canonical — text markers are the source of truth; this is what
-    the linter diffs them against. Built via the fetch adapter; `settable` reflects
-    whether this environment can write sub-issue edges back.
+    `Platform` is vestigial (see CONTRACT.md A5) — I1/I2, the only checks that
+    read it, are deleted. Kept as a call site so `run_checks` still receives the
+    `(model, platform)` shape the surviving checks expect.
     """
-    import ctx_fetch
-
-    edges: set = set()
-    labels: dict = {}
-    settable = ctx_fetch._has_gh()
-    for nd in nodes:
-        labels[nd.number] = set(nd.labels)
-    # Parent links are not on Node; fetch them per issue when gh is available.
-    if settable:
-        for nd in nodes:
-            try:
-                d = ctx_fetch._gh_json([
-                    "issue", "view", str(nd.number), "--repo", repo, "--json", "parent",
-                ])
-            except ctx_fetch.FetchError:
-                continue
-            parent = (d or {}).get("parent")
-            if parent:
-                edges.add((parent["number"], nd.number))
-    return ctx_core.Platform(edges, labels, settable)
+    return ctx_core.Platform(set(), {}, False)
 
 
 def main(argv: list | None = None) -> int:
-    """CLI entry: `ctx_lint <owner/repo>`."""
+    """CLI entry: `ctx_lint <store-path>`."""
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:
-        print("usage: ctx_lint <owner/repo>", file=sys.stderr)
+        print("usage: ctx_lint <store-path>", file=sys.stderr)
         return 2
-    repo = argv[0]
-    import ctx_fetch
+    store = argv[0]
+    import ctx_store
+
+    if not os.path.isdir(os.path.join(store, ".git")):
+        print(f"operational: not a store (no .git found): {store}", file=sys.stderr)
+        return 2
 
     try:
-        nodes = ctx_fetch.fetch_repo(repo)
-        platform = _platform_from(repo, nodes)
-    except ctx_fetch.FetchError as exc:
+        nodes = ctx_store.read_nodes(store)
+        platform = _platform_from(store, nodes)
+    except ctx_store.StoreError as exc:
         print(f"operational: {exc}", file=sys.stderr)
         return 2
 
