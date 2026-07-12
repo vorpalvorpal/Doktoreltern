@@ -18,9 +18,10 @@ Two things this build made explicit that the bare `next_node` priority hid:
 
 1. **Readiness (bottom-up correctness).** `priority = centrality × (1 − confidence)`
    ranks the high-centrality root *first*, but a parent cannot be validated `correct`
-   over `mock` children (the fidelity fold caps it). So in the deepen phase the driver
-   gates on readiness: a node is only deepenable once its active children are `correct`.
-   This forces leaves-first deepening. (Candidate to fold back into `ctx_schedule`.)
+   over `mock` children (the fidelity fold caps it). So the deepen phase gates on
+   readiness: a node is only deepenable once its active children are `correct`. This
+   forces leaves-first deepening. Prototyped here, now folded into
+   `ctx_schedule.next_node` (`ctx_schedule.deepen_ready`).
 
 2. **Focus / WIP-lock.** DESIGN raises a node's confidence (low→tentative), which *drops*
    its priority mid-sequence — so a pure re-pick-each-tick scheduler thrashes away from a
@@ -137,37 +138,23 @@ def next_move(run: NodeRun, model, n) -> str:
     return run.cursor
 
 
-# --- readiness (bottom-up correctness gate) ---------------------------------
-def _active_children(model, n):
-    return [c for p, c in model.tree_edges
-            if p == n and c in model.nodes and c not in model.dormant]
-
-
-def ready_for_deepen(model, eff, n) -> bool:
-    """A node is deepenable only once its active children are all `correct`.
-
-    Leaves are trivially ready. This is what forces leaves-first deepening despite
-    the root's higher centrality.
-    """
-    return all(eff.get(c) == "correct" for c in _active_children(model, n))
-
-
 # --- selection --------------------------------------------------------------
 def select(model, states, done, *, pins=(), skips=(), focus=True):
-    """Pick the next node to advance, or None."""
+    """Pick the next node to advance, or None.
+
+    Readiness (deepen only over `correct` children) now lives in
+    `ctx_schedule.next_node` itself. Here the driver adds only *focus*: in the
+    deepen phase an in-progress node (live cursor) is preferred, so a half-deepened
+    node is finished before another is started — otherwise DESIGN's confidence bump
+    drops its priority and the scheduler thrashes off it.
+    """
     skipset = set(skips) | set(done)
-    if not ctx_schedule.floor_met(model):
-        # Floor phase: honour the scheduler's own shallowest-first logic as-is.
-        return ctx_schedule.next_node(model, pins=pins, skips=skipset)
-    # Deepen phase: readiness gate (+ focus on in-progress work).
-    eff = ctx_schedule.effective_fidelity(model)
-    frontier = ctx_schedule.frontier(model) - skipset
-    ready = {n for n in frontier if ready_for_deepen(model, eff, n)}
-    if not ready:
-        return None
-    inprog = {n for n in ready if states[n].cursor is not None}
-    pool = inprog if (focus and inprog) else ready
-    return ctx_schedule.next_node(model, pins=tuple(pool), skips=skipset)
+    if focus and ctx_schedule.floor_met(model):
+        inprog = tuple(n for n in (ctx_schedule.frontier(model) - skipset)
+                       if states[n].cursor is not None)
+        if inprog:
+            return ctx_schedule.next_node(model, pins=inprog, skips=skipset)
+    return ctx_schedule.next_node(model, pins=pins, skips=skipset)
 
 
 # --- routing (verdict → state transition) -----------------------------------

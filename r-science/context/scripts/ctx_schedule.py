@@ -14,7 +14,9 @@ fidelity-debt term — the walking-skeleton floor already gates on fidelity):
   on the node — the belt→core axis) + Boundary in-degree + Blocked-by in-degree +
   aspect participation.
 - the **scheduler** goes floor-first (walking skeleton to ``interface``) then
-  best-first, honouring pins/skips.
+  best-first among the nodes that are *ready to deepen* (children already
+  ``correct`` — bottom-up, since a parent cannot validate over a ``mock`` child),
+  honouring pins/skips.
 
 The numeric mappings and the plain-sum centrality are deliberately simple defaults;
 #32 flags them as tune-empirically.
@@ -176,11 +178,27 @@ def floor_met(model):
                for n in frontier(model))
 
 
+def deepen_ready(model, n, eff=None):
+    """Can node `n` be deepened toward `correct` yet? (bottom-up readiness).
+
+    A node is deepenable only once its active (non-dormant) child nodes are all
+    `correct`: a parent cannot be validated `correct` over a `mock` child — the
+    fidelity fold caps it — so best-first by priority alone would keep picking the
+    high-centrality root before its parts. Leaves are trivially ready. This forces
+    leaves-first deepening; it applies in the deepen phase only (post-floor).
+    """
+    if eff is None:
+        eff = effective_fidelity(model)
+    kids = _children(model).get(n, [])
+    return all(eff.get(c) == "correct" for c in kids if _active(model, c))
+
+
 def next_node(model, *, pins=(), skips=()):
     """Which node to work on next, or None if the frontier is empty.
 
     Floor-first (shallowest node still below `interface`), then best-first by
-    priority. `skips` are excluded; `pins` (those on the frontier) restrict the
+    priority among the nodes that are *ready to deepen* (children already
+    `correct`). `skips` are excluded; `pins` (those on the frontier) restrict the
     candidate set. Ties break deterministically (lower issue number wins).
     """
     candidates = frontier(model) - set(skips)
@@ -195,4 +213,10 @@ def next_node(model, *, pins=(), skips=()):
                  if FIDELITY_RANK.get(declared_fidelity(model, n), 0) < _INTERFACE]
         if unmet:
             return min(unmet, key=lambda n: (depth[n], -prio.get(n, 0.0), n))
+    # Deepen phase: prefer ready nodes (children correct); fall back to the whole
+    # pool only if none is ready (keeps an explicit pin honoured, avoids a spurious
+    # None when a caller pins an as-yet-unready node).
+    eff = effective_fidelity(model)
+    ready = [n for n in pool if deepen_ready(model, n, eff)]
+    pool = ready if ready else pool
     return max(pool, key=lambda n: (prio.get(n, 0.0), -n))

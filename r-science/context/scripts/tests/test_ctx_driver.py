@@ -139,17 +139,18 @@ class TestModelSynth:
 
 class TestReadiness:
     def test_high_centrality_root_is_not_touched_first(self):
-        # Bare next_node would pick #1 (centrality 2 > leaf 1); the driver must not.
+        # The root outranks the leaf on raw priority, but readiness (now first-class
+        # in ctx_schedule.next_node) defers it until the leaf is correct.
         states = {1: run_at(), 2: run_at()}
         edges = {(1, 2)}
         aspects = {1: ["a"], 2: ["b"]}
         disp = Script()
         D.run(states, edges, disp, aspects=aspects, budget=100)
         assert disp.calls[0][0] == 2                 # leaf first, not the root
-        # sanity: the bare scheduler really does prefer the root here.
-        m = D.build_model(states if False else
-                          {1: run_at(), 2: run_at()}, edges, aspects=aspects)
-        assert ctx_schedule.next_node(m) == 1
+        # readiness does the work: raw priority prefers #1, next_node still picks #2.
+        m = D.build_model({1: run_at(), 2: run_at()}, edges, aspects=aspects)
+        assert ctx_schedule.priority(m)[1] > ctx_schedule.priority(m)[2]
+        assert ctx_schedule.next_node(m) == 2        # readiness gate overrides priority
 
 
 # --- focus / WIP-lock vs thrash ---------------------------------------------

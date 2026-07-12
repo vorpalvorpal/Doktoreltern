@@ -1093,6 +1093,33 @@ def _check_i13(model: Model, platform: Platform) -> list:
     return findings
 
 
+def _check_i14(model: Model, platform: Platform) -> list:
+    """I14: confidence 'high' requires fidelity 'correct'.
+
+    Confidence in the scheduler axis means confidence *that the node is correct*
+    (it gates deepening: priority = centrality × (1 − confidence)). A node whose
+    own fidelity is below 'correct' — a stub/interface/mock — cannot honestly carry
+    'high' confidence; doing so zeroes its priority and makes a known-mock node look
+    done to the scheduler. This catches the floor-pass authoring slip where 'high'
+    meant "confident in the interface" rather than "confident it is correct".
+    """
+    findings: list = []
+    for issue in model.nodes:
+        gauge = model.gauges.get(issue, {})
+        fidelity = gauge.get("fidelity")
+        # Only an *explicit* contradiction: a declared fidelity below 'correct'
+        # carrying 'high'. A node with no fidelity marker is off the ladder and
+        # exempt (pure design/discussion nodes may be high-confidence).
+        if (gauge.get("confidence") == "high"
+                and fidelity is not None and fidelity != "correct"):
+            findings.append(Finding(
+                issue, "I14",
+                f"confidence 'high' but fidelity '{fidelity}' — high confidence "
+                f"claims correctness; keep it ≤ tentative until fidelity is 'correct'",
+            ))
+    return findings
+
+
 # I10 (cross-reference resolution) and I11 (value-set validity) are deferred:
 # value validity is enforced at parse time, and prose cross-reference scanning is
 # noisy — see context-spec.md §7.
@@ -1106,4 +1133,5 @@ CHECKS: dict = {
     "I9": _check_i9,
     "I12": _check_i12,
     "I13": _check_i13,
+    "I14": _check_i14,
 }
