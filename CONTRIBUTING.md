@@ -1,6 +1,6 @@
 # Contributing to Doktoreltern
 
-Thank you for your interest in contributing! Doktoreltern is delivered as a committee of specialist advisor plugins; this repository currently holds one, **`r-science`** (the science-centered R package development workflow). This document provides guidelines for creating and submitting new skills for it.
+Thank you for your interest in contributing! Doktoreltern is delivered as a committee of specialist advisor plugins; this repository currently holds two: **`r-science`** (the science-centered R package development workflow) and **`docloop`** (narrow skills invoked live from inside a docloop review comment — see `docloop/skills/README.md` before touching those). This document provides guidelines for creating and submitting new skills, primarily for `r-science`.
 
 ## Quick Start
 
@@ -12,7 +12,7 @@ Thank you for your interest in contributing! Doktoreltern is delivered as a comm
 
 ### 1. Confirm it belongs here
 
-This repository holds the science-centered R package development skills, all under `r-science/` in the single `r-science` plugin. New skills should support that workflow (planning, testing, implementation, verification, benchmarking, review, and the scientific-modelling knowledge skills).
+This repository holds the science-centered R package development skills under `r-science/` in the `r-science` plugin (plus the special-purpose `docloop` plugin's skills under `docloop/skills/`, which follow their own house rules). New `r-science` skills should support that workflow (planning, testing, implementation, verification, benchmarking, review, and the scientific-modelling knowledge skills).
 
 General-purpose R, GitHub, Shiny, Quarto, and publishing skills are **not** maintained here — they come from the upstream [Posit Claude Skills](https://github.com/posit-dev/skills) marketplace, which `r-science` declares as a dependency. If your skill belongs there, contribute it upstream instead.
 
@@ -155,8 +155,8 @@ To use the skill-creator:
 ### 1. Fork and Clone
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/skills.git
-cd skills
+git clone https://github.com/YOUR-USERNAME/Doktoreltern.git
+cd Doktoreltern
 ```
 
 ### 2. Create Your Skill Directory
@@ -172,7 +172,7 @@ Create your SKILL.md and any supporting files following the structure above.
 
 ### 4. Update marketplace.json
 
-Add your skill's path to the `skills` array of the single `r-science` plugin in `.claude-plugin/marketplace.json`:
+Add your skill's path to the `skills` array of the matching plugin (usually `r-science`) in `.claude-plugin/marketplace.json`:
 
 ```json
 {

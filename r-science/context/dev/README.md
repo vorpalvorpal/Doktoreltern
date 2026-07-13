@@ -1,5 +1,7 @@
 # Store migration — implementation plans
 
+> **Historical — store migration construction record (completed 2026-07-12).** Kept for reference; API pins may drift with store schema v2 (node #64). The node tree is the source of truth.
+
 Detailed, execution-ready plans for migrating the `ctx` context substrate off
 GitHub issues onto a **local, git-backed node store** (design.md:140 / issue #60).
 

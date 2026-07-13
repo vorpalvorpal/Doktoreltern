@@ -148,7 +148,8 @@ export function createApi(
    * Tracked top-level `*.md` files of the workspace repo, sorted — the same
    * discovery rule as `scripts/dl/docs.ts` `trackedDocs` (replicated rather
    * than imported: this module's git plumbing already runs `-C workspace`).
-   * Never `turn.xml` (not `.md`), never nested files (so never `threads/`).
+   * Never `turn.xml` (not `.md`), never nested files (so never `threads/`,
+   * and never the parked docs under `archive/`).
    */
   const trackedDocs = async (): Promise<string[]> => {
     const { stdout } = await git('ls-files', '--', '*.md');

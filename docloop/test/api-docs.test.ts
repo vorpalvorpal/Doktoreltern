@@ -98,6 +98,21 @@ describe('GET /docs', () => {
     const names = body.docs.map((d: { name: string }) => d.name);
     expect(names).toEqual(['doc.md']);
   });
+
+  it('never lists parked docs under workspace/archive/ (tracked or not)', async () => {
+    await fetch(`${base}/commit`, { method: 'POST', body: 'live doc' });
+    // A tracked parked doc (the Phase-A restructure shape)…
+    await mkdir(join(workspace, 'archive'), { recursive: true });
+    await writeFile(join(workspace, 'archive', 'design.md'), 'drained\n', 'utf8');
+    await git('add', 'archive/design.md');
+    await git('commit', '-q', '-m', 'park drained doc');
+    // …and an untracked one sitting in the working tree.
+    await writeFile(join(workspace, 'archive', 'notes.md'), 'parked draft\n', 'utf8');
+
+    const body = await (await fetch(`${base}/docs`)).json();
+    const names = body.docs.map((d: { name: string }) => d.name);
+    expect(names).toEqual(['doc.md']);
+  });
 });
 
 describe('?doc= parameter', () => {

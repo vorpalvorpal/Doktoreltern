@@ -1,5 +1,7 @@
 # 00 — Overview, sequencing, and drift log
 
+> **Historical — store migration construction record (completed 2026-07-12).** Kept for reference; API pins may drift with store schema v2 (node #64). The node tree is the source of truth.
+
 ## What we're doing and why
 
 The `ctx` context substrate currently reads its node graph from **GitHub issues**

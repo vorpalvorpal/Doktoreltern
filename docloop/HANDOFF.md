@@ -1,5 +1,7 @@
 # docloop — handoff for a dogfooding conversation
 
+*Last refreshed 2026-07-13.*
+
 This orients a fresh Claude conversation that is taking **Claude's turn** in the
 docloop human↔LLM review loop. Keep it in sync as docloop changes.
 
@@ -9,73 +11,90 @@ docloop is a small GUI (a Vite app under `docloop/` in the `~/Documents/skills`
 repo) for a human↔LLM document-review loop. A human edits a Markdown document and
 leaves comments on it in the browser; Claude reads what changed, edits the
 document and answers the comments; the human reloads and sees Claude's changes as
-a diff with the replies in the margin. It's a deliberately rough **v0** we're
-dogfooding to help co-write the rest of this repo — the "MCP" that would normally
-broker the hand-off is, for now, *hand-simulated by Claude working directly in the
-files*. The documents under review are the tracked top-level `*.md` files in
-`docloop/workspace/` (currently `design.md`, `plan.md`, `construct.md`,
-`validate.md`), which is its **own git repo** (separate from the code repo, and
-gitignored from it) where **each commit is one turn**. You don't need the dev server running to take a turn —
-that's the human's GUI; you just work in the files and commit.
+a diff with the replies in the margin. The documents under review are the
+**tracked top-level `*.md` files** in `docloop/workspace/` (currently
+`whiteboard-restructure.md`), which is its **own git repo** (separate from the
+code repo, and gitignored from it) where **each commit is one turn**. You don't
+need the dev server running to take a turn — that's the human's GUI; you take
+your turn through the `dl` CLI and commit.
+
+`docloop/workspace/archive/` is **excluded from the loop**: doc discovery is
+top-level-only, so nothing under `archive/` (the drained move docs) is listed,
+linted as a doc, or staged as one. Do not resurrect those files into the loop.
+
+Whiteboards under review are working surfaces, not authority — the node tree at
+`r-science/context/store` is the source of truth (see `MAP.md` at the repo
+root, and store node #62 for the non-authority rule).
 
 ## The pieces
 
 Comments are stored out-of-line:
 
-- `docloop/workspace/doc.md` — the document. It holds only **anchors**, never
-  comment bodies: `:mark[highlighted span]{#t1}` inline, or `:::mark{#t1}` … `:::`
-  around whole blocks.
+- The doc holds only **anchors**, never comment bodies: `:mark[highlighted
+  span]{#t1}` inline, or `:::mark{#t1}` … `:::` around whole blocks.
 - `docloop/workspace/threads/<id>/` — one directory per comment thread; each
   comment is `0001.md`, `0002.md`, … a tiny `author:` / `created:` frontmatter
-  block followed by a free-Markdown body.
-- `docloop/workspace/turn.xml` — written by the GUI when the human hands a turn
-  over. **Superseded as your input by `dl agenda`** (below), which derives the
-  same information — and more — from git; ignore `turn.xml` (it stays GUI-owned
-  working state).
+  block followed by a free-Markdown body. A `resolved.md` marker (same
+  frontmatter shape, body = the note) closes a thread in place; nothing is
+  deleted.
+- `docloop/workspace/turn.xml` — GUI-owned working state. **Never your input**
+  (`dl agenda` derives everything from git) and never staged.
 
-## Your turn — the `dl` CLI (2026-07-10)
+## Your turn — the `dl` CLI
 
-The whole turn now goes through one tool, `npm run dl --` (spec:
-`docloop/model-api.md`; run from `docloop/`). Never hand-author `:mark`
-directive syntax, thread ids, comment frontmatter, or `git add` lists — the
-CLI owns representation; you own judgement.
+The whole turn goes through one tool: `npm run dl -- <verb>` from `docloop/`
+(spec: `docloop/model-api.md`; `npm run dl -- --help` lists the verbs).
+Workspace root comes from `DOCLOOP_WORKSPACE`, default `<cwd>/workspace`.
+Output discipline: one line to stdout on success; on failure `dl <verb>:
+<reason>` to stderr, exit 1, no partial writes (`dl check` is the exception —
+it prints its issue list either way). Never hand-author `:mark` directive
+syntax, thread ids, comment frontmatter, or `git add` lists — the CLI owns
+representation; you own judgement.
 
 1. **`dl agenda`** — *the* read. Everything since your last commit, all human
-   turns folded: block-level prose deltas per doc, threads awaiting you (full
-   bodies when changed, one-liners when merely open), human resolutions with
-   notes. If the human left an uncommitted draft, agenda commits it as its own
-   `turn (rjs): recovered draft` first and folds it in. (`dl orient` for a
-   quick whose-turn/what-docs overview.)
+   turns folded: block-level prose deltas per doc, threads awaiting you,
+   human resolutions with notes. If the human left an uncommitted draft,
+   agenda first commits it as its own `turn (rjs): recovered draft` and folds
+   it in. (`dl orient` for a quick whose-turn/what-docs overview.)
 2. **`dl read <doc> [section]`** — numbered blocks + a ref
-   (`design.md@a3f21c4e`). You need this before editing: edits address blocks
-   by ordinal against that ref.
+   (`whiteboard-restructure.md@a3f21c4e`). You need this before editing:
+   edits address blocks by ordinal against that ref.
 3. **`dl edit <doc>@<ref>`** — replace/insert/delete blocks, many ops per call
    on stdin (`@@ replace 4-5` … `@@ insert-after 9` … `@@ delete 12`), applied
    bottom-up, canonicalised on ingest, stale-ref refused. Carry any inline
-   anchors in your replacement text — that's ordinary editing; a `warn:` tells
-   you if an edit dropped an anchored span (resolve or re-anchor it).
-4. **`dl comment "<span>"`** (body stdin; `--doc`/`--block <doc>@<ref>:<n>` to
-   disambiguate) — allocates the id, anchors the span, opens the thread.
-5. **`dl reply <thread>`** (body stdin) — doc inferred from the thread id.
+   anchors in your replacement text — that's ordinary editing; if an edit
+   drops an anchored span the thread goes orphaned and `dl check` flags it
+   (resolve or re-anchor it).
+4. **`dl comment "<span>"`** (body on stdin; `--doc <doc>` / `--block
+   <doc>@<ref>:<n>` to disambiguate) — allocates the id, anchors the span,
+   opens the thread.
+5. **`dl reply <thread>`** (body on stdin) — doc inferred from the thread id.
 6. **`dl resolve <thread> [--note "…"]`** — unwraps the anchor and marks the
-   thread resolved **in place** (`threads/<id>/resolved.md`; nothing is
-   deleted). Use `--note` to concede-and-close without losing the reasoning;
-   the note reaches the human via the turn record.
-7. **`dl check`** — union-aware lint across *all* workspace docs; dry-run of
-   commit.
-8. **`dl commit -m "<subject>"`** — the transactional turn end: validates,
-   stages exactly the right files (never `turn.xml`), commits as the fixed
-   model author with a machine-readable turn record in the commit message.
-   Refuses if anything outside dl's own writes changed mid-turn.
+   thread resolved **in place** (`threads/<id>/resolved.md`). Use `--note` to
+   concede-and-close without losing the reasoning; the note reaches the human
+   via the turn record.
+7. **`dl check`** — union-aware lint across all tracked top-level docs plus
+   the `threads/` store; dry-run of commit.
+8. **`dl commit -m "<subject>"`** — the transactional turn end: refuses if
+   anything outside dl's own writes changed mid-turn (foreign-edit guard),
+   refuses on `dl check` ERRORs, stages exactly the right files (top-level
+   `*.md` + `threads/`, never `turn.xml`), and commits as the fixed model
+   author (`docloop-model <model@docloop>`) with a machine-readable YAML turn
+   record in the commit message. `--allow-manual` skips the foreign-edit
+   guard and canonicalises hand-edited docs — for deliberate out-of-band
+   commits only, never a normal turn.
 
-**One-time rollout step (first dl turn only):** the live workspace docs are
-still in the *old* GUI-canonical form, and `dl check` will flag them
-non-canonical (escaping differences only, ~3 lines). Before your first real
-dl turn, land a dedicated reformat commit: canonicalise every tracked doc,
-then `dl commit --allow-manual -m "chore: remark-canonical reformat"` — don't
-mix the reformat into a content turn. Legacy commands (`npm run thread`,
-`canonicalize`, `lint-turn`) still exist but are superseded; don't mix the
-two protocols within one turn.
+Legacy npm scripts (`npm run thread`, `canonicalize`, `lint-turn`) still exist
+but are superseded — don't mix the two protocols within one turn. The old
+"one-time remark-canonical reformat" rollout step is moot: the docs it
+concerned are now parked in `workspace/archive/`, and the live doc lints
+canonical-clean.
+
+**Known state (2026-07-13):** `dl check` currently reports ~24 `orphaned
+thread` ERRORs — threads whose anchors live in the *archived* move docs, which
+doc discovery no longer scans. `dl commit` will refuse until those threads are
+resolved (or otherwise dispositioned by the human). Flag this rather than
+bulk-resolving on your own initiative.
 
 The human then clicks **Reload** in the GUI and sees your edits diffed against
 their last turn, with your replies in the margin. Keep edits surgical and prose
@@ -85,13 +104,14 @@ canonical — the whole point of the loop is honest, low-noise diffs.
 
 - **Multi-span, same-id anchors are legal** — one thread id can anchor several
   disjoint spans in the doc.
+- **Anchor spans are plain text** — no emphasis or code inside `:mark[...]`
+  (lint-enforced until the Milkdown #704 escaping bug is fixed upstream).
 - **Don't anchor inside inline code** — it splits the code span in two. Anchor
   the surrounding text instead.
 - **`turn.xml` is GUI-owned working state.** Expect it to show as modified
-  after your turn; never `git add` it.
+  after your turn; `dl commit` never stages it, and neither should you.
 - **Don't number headings manually.** Unnumbered headings mean inserting a
-  section is a clean single-block add instead of a renumbering cascade, and it
-  plays badly with `<edits>` diffing otherwise.
+  section is a clean single-block add instead of a renumbering cascade.
 
 ## Running the GUI (the human's side)
 
@@ -100,55 +120,42 @@ Two ways to run it, from `docloop/`:
 - **`npm run serve`** — the durable, HMR-free runtime for actually *using*
   docloop day to day. Builds the SPA once (`vite build`) and serves it, plus
   the same API endpoints, off a plain `http.createServer`
-  (`scripts/server.ts`) with no Vite dev server underneath. Nothing about it
-  is restart-fragile: there's no HMR to force a reload and lose in-memory
-  edits, and it isn't tied to the lifetime of the session that launched it.
-  Prefer this unless you're editing docloop's own source.
+  (`scripts/server.ts`) with no Vite dev server underneath. Prefer this
+  unless you're editing docloop's own source.
 - **`npm run dev`** — the Vite dev server, for hacking on docloop's own
-  source (HMR, instant rebuilds). Not needed to take a turn or to review as a
-  human; use `npm run serve` for that instead.
+  source (HMR, instant rebuilds).
 
 Either way, open the printed URL (default `http://localhost:5173`). "Hand to
-Claude" commits the human's turn and writes `turn.xml`; "Reload" pulls the
-latest committed doc; "Save draft" writes the doc to disk *without*
-committing or touching `turn.xml` — it lets the human bank edits across several
-sittings before one real "Hand to Claude" turn.
+Claude" commits the human's turn; "Reload" pulls the latest committed doc;
+"Save draft" writes the doc to disk *without* committing — the human can bank
+edits across several sittings, and `dl agenda` recovers any dangling draft as
+its own human turn when you next pick up.
 
 **Left nav (multi-doc).** The GUI lists every reviewable workspace doc (the
-`dl` discovery rule: tracked ∪ working-tree top-level `*.md`) in a left
-sidebar with a per-doc state (clean / uncommitted draft / untracked); clicking
-one switches the editor to it — `DOCLOOP_DOC` now only picks the *initial*
-doc. Reload / Save draft / Hand to Claude always target the doc the editor is
-on. The sidebar also has a **Nodes** section — a read-only tree of the ctx
-node store, shown only when `DOCLOOP_NODES` points at the store's root
-directory (schema-agnostic v1: one entry per directory, `*.md` files as
-leaves; see `plans/dl-E-gui-nav-sidebar.md`).
+`dl` discovery rule: tracked ∪ working-tree top-level `*.md`; `archive/` is
+never listed) in a left sidebar with a per-doc state (clean / draft /
+untracked); clicking one switches the editor to it — `DOCLOOP_DOC` only picks
+the *initial* doc. Reload / Save draft / Hand to Claude target the doc the
+editor is on. The sidebar also has a **Nodes** section — a read-only tree of
+the ctx node store, shown only when `DOCLOOP_NODES` points at the store's
+root directory.
 
-**Keep the server alive across sleep.** A server launched as a throwaway
-background job dies when the machine sleeps (or the launching session drops), and
-a *restart* is what discards in-flight work. `npm run serve` already sidesteps
-the HMR/reload half of this problem, but still run it as a durable, self-owned
-process for the same reason — a real Terminal window, or `nohup npm run serve
->/tmp/docloop.log 2>&1 &`, or `pm2 start "npm run serve" --name docloop` (swap in
-`npm run dev` in either command if you're hacking on docloop itself). macOS then
-*suspends* and resumes the same process on sleep/wake, so the browser reconnects
-to it with no full reload and nothing is lost. Do **not** use `caffeinate` — that
-stops the machine sleeping, which isn't the goal.
+**Keep the server alive across sleep.** Run it as a durable, self-owned
+process — a real Terminal window, or `nohup npm run serve >/tmp/docloop.log
+2>&1 &`, or `pm2 start "npm run serve" --name docloop`. macOS then suspends
+and resumes the same process on sleep/wake, so the browser reconnects with
+nothing lost. Do **not** use `caffeinate` — stopping the machine sleeping
+isn't the goal.
 
-**Unsaved-edit safety net (localStorage).** The editor autosaves the live doc to
-the browser's `localStorage` on every edit and right before any reload, keyed per
-doc (`src/draft-store.ts`). If the page reloads (dev-server restart, accidental
-refresh, tab crash) your edits are restored on next load with a "Restored unsaved
-edits" bar (Discard to revert). This covers the doc text *and* keeps comment
-anchors consistent with the already-persisted thread bodies. Caveat: it does
-**not** cover edits made while the server is *fully down* — the doc survives in the
-browser, but new comments can't POST to a dead server, so comment only with the
-server up.
+**Unsaved-edit safety net (localStorage).** The editor autosaves the live doc
+to the browser's `localStorage` on every edit and right before any reload,
+keyed per doc (`src/draft-store.ts`); edits are restored on next load with a
+"Restored unsaved edits" bar. Caveat: new comments can't POST to a dead
+server, so comment only with the server up.
 
-**Only "Hand to Claude" is a real turn boundary.** If you're picking up a turn,
-the human is expected to have clicked that, not just Save draft. A dangling
-uncommitted draft left on disk gets folded silently into whatever you `git add
-&& git commit` next (no data loss, but it blurs whose edits are whose) — if
-`git status` in `workspace/` shows `doc.md` modified *before* you've made any
-edits of your own, that's a leftover draft, not something you introduced; flag
-it to the human rather than committing over it.
+**Only "Hand to Claude" is a real turn boundary.** If you're picking up a
+turn, the human is expected to have clicked that, not just Save draft. A
+dangling uncommitted draft is no longer a silent hazard — `dl agenda` commits
+it as `turn (rjs): recovered draft` and folds it into the delta it reports —
+but if the recovery surprises you, say so to the human rather than guessing
+whose edits are whose.
