@@ -30,7 +30,7 @@ The advisors stack rather than compete: a project can sit under several at once,
 
 ## Status
 
-Doktoreltern is under active development. The methodology layer described above is being built on top of the existing **r-science** skills — the workflow spine (whiteboard → plan → tests → implement → verify → benchmark/optimise → review) plus R OOP and Bayesian knowledge. Expect things to move.
+Doktoreltern is under active development. The methodology layer described above is being built on top of the existing **r-science** skills — the workflow spine (conventions, whiteboard → plan → tests → implement → verify → benchmark/optimise → review) plus R OOP and Bayesian knowledge. Expect things to move.
 
 ## Installation
 

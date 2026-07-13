@@ -8,6 +8,10 @@ This repository implements **Doktoreltern** — a risk-first methodology for sol
 
 The general-purpose R, GitHub, and publishing skills the workflow builds on are **not** in this repository: they live in the upstream [Posit Claude Skills](https://github.com/posit-dev/skills) marketplace (`posit-dev-skills`) and are pulled in as plugin **dependencies** declared in `.claude-plugin/marketplace.json`. This repository was previously a fork of that one; it no longer is.
 
+## Source of Truth
+
+The **node tree is the source of truth** for the workflow redesign. It lives in the ctx node store at `r-science/context/store` — its **own git repo**, nested inside this one (read `nodes/<id>/node.md`; nesting is the tree). Whiteboards, archived docs, memory files, and session records are not authority. See `MAP.md` at the repo root for where everything lives.
+
 ## Utility Script
 
 The only runnable utility is `count-skill-tokens.py`, which reports line and token counts for a skill:
@@ -76,23 +80,6 @@ To rely on a skill from the upstream Posit marketplace, do **not** copy it here 
 `r-science/` holds the single `r-science` plugin's skills: the workflow spine (`conventions`, `whiteboard`, `plan`, `tests`, `implement`, `verify`, `benchmark-optimise`, `review`) plus `r-oop` and `r-bayes`. General developer, GitHub, r-lib, `open-source`, `ggsql`, `shiny`, and `quarto` skills are upstream dependencies, not part of this repository — see [What This Repository Is](#what-this-repository-is).
 
 `docloop/skills/` holds the `docloop` plugin's skills — a narrow, purpose-built roster invoked live from inside a docloop review comment, not general-purpose workflow skills. See `docloop/skills/README.md` for the house rules (quick, text-in/text-out only, no mode changes) before adding to it.
-
-## Dogfooding
-
-When working **on this repository** and one of its skills is invoked (via
-slash command or by name), follow the version in the **working tree on the
-current branch** — read its `SKILL.md` directly — not any installed copy.
-Installed skills may be stale; the branch is the truth.
-
-## Workflow Design Principles
-
-When designing or extending the r-science workflow (skills, agents, MCP tooling, issue conventions):
-
-- **Portability is an aim, not an enforcement.** The workflow currently leans on GitHub (issues, sub-issues, labels, dependencies). Prefer designs that would move to another provider (GitLab, Gitea/Forgejo, local trackers) with minimal difficulty: keep semantics in plain text with simple greppable syntax inside issue bodies/comments; treat platform primitives (sub-issue links, labels, dependency edges) as derived indices over that text, not as the source of truth.
-- **Minimise token usage**:
-  - Automate boring, deterministic work with simple scripts (extraction, collation, consistency linting) rather than spending LLM calls on it.
-  - Farm easy, well-specified tasks out to cheap models; reserve capable models for judgement.
-  - Don't pollute context windows: serve summaries by default (e.g. a closed issue's closing summary, not its full thread) and fetch full detail only on explicit request.
 
 ## Dogfooding
 
