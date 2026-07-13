@@ -1,5 +1,7 @@
 # Stage 3 — linter: delete the platform-derived checks
 
+> **Historical — store migration construction record (completed 2026-07-12).** Kept for reference; API pins may drift with store schema v2 (node #64). The node tree is the source of truth.
+
 The two consistency checks that diff in-text markers against **GitHub platform
 state** (sub-issue edges, aspect labels) are meaningless once there is no
 platform. Delete them. Every other check (I3–I9, I12, I13) already ignores the

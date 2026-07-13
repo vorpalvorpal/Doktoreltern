@@ -1,5 +1,7 @@
 # Stage 4 — seal off `gh`, retire GitHub, final gate
 
+> **Historical — store migration construction record (completed 2026-07-12).** Kept for reference; API pins may drift with store schema v2 (node #64). The node tree is the source of truth.
+
 Last stage. Repoint `ctx_seal` off its own `gh` calls, delete the GitHub
 transport module, and prove the substrate is GitHub-free.
 

@@ -1,5 +1,7 @@
 # Stage 2 — read path & entrypoints
 
+> **Historical — store migration construction record (completed 2026-07-12).** Kept for reference; API pins may drift with store schema v2 (node #64). The node tree is the source of truth.
+
 Repoint the three live read-path consumers from a GitHub `repo` string to a
 **store path**. Depends on Stage 1 (`ctx_store.read_nodes`). No new behaviour —
 this is rewiring.

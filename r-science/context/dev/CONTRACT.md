@@ -1,5 +1,7 @@
 # CONTRACT digest — store migration
 
+> **Historical — store migration construction record (completed 2026-07-12).** Kept for reference; API pins may drift with store schema v2 (node #64). The node tree is the source of truth.
+
 The single source of truth for pinned APIs, layout, conventions, gates, and
 adjudicated decisions. Workers read this + their own plan section. When a plan
 and the tests disagree, **this file wins** pending orchestrator adjudication.
