@@ -26,9 +26,9 @@
         "./r-science/review",
         "./r-science/r-oop",
         "./r-science/r-bayes",
-        "./r-science/context/commands/gc-artefacts",
-        "./r-science/context/commands/seal",
-        "./r-science/context/commands/unseal"
+        "./ctx/commands/gc-artefacts",
+        "./ctx/commands/seal",
+        "./ctx/commands/unseal"
       ],
       "dependencies": [
         { "name": "posit-dev", "marketplace": "posit-dev-skills" },

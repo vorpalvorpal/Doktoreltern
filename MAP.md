@@ -1,11 +1,10 @@
 # MAP
 
 Orientation map for this repository. The **node tree is the source of truth**
-for the workflow redesign: it lives in the ctx node store at
-`r-science/context/store` — its **own git repo**, nested inside this one.
-Read `nodes/<id>/node.md`; directory nesting *is* the tree. Every other
-document in this repo is a working surface or a historical record, not
-authority.
+for the workflow redesign: it lives in the ctx node store at `store/` (repo
+root) — its **own git repo**, nested inside this one. Read
+`nodes/<id>/node.md`; directory nesting *is* the tree. Every other document
+in this repo is a working surface or a historical record, not authority.
 
 ## Where things live
 
@@ -22,11 +21,13 @@ authority.
   `BACKLOG-2026-07.md`).
 - **Walking-skeleton dogfood** — `docloop/dogfood/` (gitignored; its own
   repo).
-- **Substrate code** — `r-science/context/scripts` and
-  `r-science/context/ctx_mcp`; run pytest from `r-science/context`.
+- **Substrate code** — `ctx/scripts` and `ctx/ctx_mcp` (generic, no plugin
+  owns it); run pytest from `ctx/`.
 - **The docloop app** — `docloop/`; run vitest from `docloop/`.
 - **Taking a docloop turn** — `docloop/HANDOFF.md`.
 - **r-science skills** — `r-science/<skill>/SKILL.md`.
+- **r-data skills** — `r-data/<skill>/SKILL.md` (data-engineering variant
+  of the spine).
 
 Claude-memory files and session records are not authority either; where
 anything disagrees with the node tree, the tree wins.

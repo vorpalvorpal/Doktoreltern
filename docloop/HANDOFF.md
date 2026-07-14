@@ -23,7 +23,7 @@ top-level-only, so nothing under `archive/` (the drained move docs) is listed,
 linted as a doc, or staged as one. Do not resurrect those files into the loop.
 
 Whiteboards under review are working surfaces, not authority — the node tree at
-`r-science/context/store` is the source of truth (see `MAP.md` at the repo
+`store/` at the repo root is the source of truth (see `MAP.md` at the repo
 root, and store node #62 for the non-authority rule).
 
 ## The pieces
