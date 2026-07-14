@@ -19,6 +19,11 @@ missing outer shell for a real project:
   interrupted run resumes instead of restarting. Writing gauges back onto the
   node bodies stays with the moves themselves (the prompt instructs them);
   proper store persistence is #42, not this shell.
+- **per-tick world reload**: `make_refresh` re-collates the store at the top of
+  every driver tick, so nodes created mid-run by dispatched moves (a PLAN
+  decomposition, say) join the frontier in the same run instead of waiting for
+  the next invocation. Runtime state wins for nodes the driver has advanced;
+  a node still exactly as seeded follows the fresh disk read.
 
 Deliberately MVP: single model tier, tick budget only, verdicts trusted as
 reported. The point is to run real moves and collect the usage data that a
@@ -36,6 +41,7 @@ import re
 import subprocess
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import ctx_core
@@ -110,22 +116,73 @@ def _telemetry_dir(store: str) -> Path:
     return d
 
 
+def overlay_runtime(states, runtime) -> None:
+    """Overlay driver-owned NodeRuns onto freshly-loaded `states`.
+
+    The one precedence rule shared by the run-state resume and the per-tick
+    refresh: state the driver owns (cursor, faults, done, gauges) wins for
+    nodes present in both; fresh-from-disk gauges seed only nodes the runtime
+    has never seen. Runtime entries for nodes no longer on the frontier are
+    dropped silently (they left the working set).
+    """
+    for n, run in runtime.items():
+        if n in states:
+            states[n] = run
+
+
 def load_run_state(store: str, states) -> None:
     """Overlay persisted cursor/gauge/fault state onto freshly-loaded states."""
     path = _telemetry_dir(store) / "run-state.json"
     if not path.exists():
         return
     saved = json.loads(path.read_text())
-    for key, rec in saved.items():
-        n = int(key)
-        if n in states:
-            states[n] = ctx_driver.NodeRun(**rec)
+    overlay_runtime(states, {int(k): ctx_driver.NodeRun(**rec)
+                             for k, rec in saved.items()})
 
 
 def save_run_state(store: str, states) -> None:
     path = _telemetry_dir(store) / "run-state.json"
     path.write_text(json.dumps(
         {str(n): vars(r) for n, r in states.items()}, indent=1))
+
+
+def make_refresh(store: str, states, source_nodes):
+    """Build the per-tick `refresh()` closure for `ctx_driver.run`.
+
+    Each call re-collates the store so nodes created mid-run by dispatched
+    moves join the frontier in the same run. Merge semantics: a node the
+    driver has *advanced* (its NodeRun differs from what was last seeded from
+    disk) keeps its runtime state outright — `overlay_runtime`, the same
+    precedence as the run-state resume. A node still exactly as seeded
+    follows the fresh disk read instead, so *new* information about untouched
+    nodes lands: a stub leaf that gained children mid-run flips to derived
+    fidelity (`None`, the #33 unstamped rule), rather than staying capped by
+    its stale leaf-default and drawing a no-op INTERFACE move.
+
+    `states` and `source_nodes` are mutated in place — the dispatch closure
+    (crash-safe run-state saves, prompt building) holds the same objects. The
+    seed baseline is read from disk here, not taken from `states`, so a
+    resumed run-state overlay already applied to `states` counts as
+    driver-owned no matter the call order.
+    """
+    import ctx_source
+
+    seeds = load_world(store)[1]      # disk-pure baseline, fresh objects
+
+    def refresh():
+        _model, fresh, edges, boundaries, aspects = load_world(store)
+        advanced = {n: run for n, run in states.items() if run != seeds.get(n)}
+        overlay_runtime(fresh, advanced)
+        for n, run in fresh.items():
+            if n not in advanced:
+                seeds[n] = replace(run)   # copy: `run` lands in states and mutates
+        states.clear()
+        states.update(fresh)
+        source_nodes.clear()
+        source_nodes.update(ctx_source.RepoSource(store).nodes)
+        return states, edges, boundaries, aspects
+
+    return refresh
 
 
 # --- prompt assembly ---------------------------------------------------------
@@ -292,9 +349,10 @@ def main(argv=None) -> int:
         max_turns=args.max_turns, timeout=args.timeout,
         skill_prefix=args.skill_prefix, dispatch_cmd=args.dispatch_cmd,
         states=states)
+    refresh = make_refresh(args.store, states, source_nodes)
     result = ctx_driver.run(
         states, edges, dispatch, boundaries=boundaries, aspects=aspects,
-        budget=args.budget, fault_cap=args.fault_cap)
+        budget=args.budget, fault_cap=args.fault_cap, refresh=refresh)
     save_run_state(args.store, states)
 
     print(f"\noutcome: {result.outcome} after {result.ticks} dispatch(es)")

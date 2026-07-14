@@ -11,8 +11,10 @@ scheduler's job — the part a human was doing by hand:
 
 No network, no LLM. The *content* of a move — writing code, judging correctness — is an
 **injected `dispatch` callable**, so unit tests drive the loop with scripted verdicts and
-a real run drives it with sub-agent moves. The autonomy this module owns is precisely the
-scheduling/routing judgement, not the move content.
+a real run drives it with sub-agent moves. World reload is likewise injected (`refresh`,
+optional): the driver stays pure while a store-backed shell re-collates per tick. The
+autonomy this module owns is precisely the scheduling/routing judgement, not the move
+content.
 
 Two things this build made explicit that the bare `next_node` priority hid:
 
@@ -203,10 +205,18 @@ def route(run: NodeRun, move: str, verdict: Verdict) -> None:
 
 # --- the loop ---------------------------------------------------------------
 def run(states, edges, dispatch, *, roots=None, boundaries=None, aspects=None,
-        budget=100, fault_cap=3, pins=(), skips=(), focus=True) -> RunResult:
+        budget=100, fault_cap=3, pins=(), skips=(), focus=True,
+        refresh=None) -> RunResult:
     """Drive the tree to `correct`, or stop with a reason.
 
     `dispatch(decision, model) -> Verdict` is the injected move executor.
+    `refresh() -> (states, edges, boundaries, aspects)`, when given, is called
+    at the top of every tick and the driver rebinds its world from the result —
+    so nodes created mid-run by dispatched moves (a PLAN decomposition, say)
+    join the frontier in the *same* run; nodes arriving already `correct` join
+    the done set, mirroring the seeding below. Like `dispatch` it is injected
+    I/O: the driver stays pure. Roots stay as derived at run start — new
+    top-level roots appearing mid-run are out of scope.
     Returns a `RunResult` with the full trajectory for inspection.
     """
     if roots is None:
@@ -217,6 +227,9 @@ def run(states, edges, dispatch, *, roots=None, boundaries=None, aspects=None,
     done = {n for n, r in states.items() if r.done or r.fidelity == "correct"}
     trajectory = []
     for tick in range(1, budget + 1):
+        if refresh is not None:
+            states, edges, boundaries, aspects = refresh()
+            done |= {n for n, r in states.items() if r.done or r.fidelity == "correct"}
         model = build_model(states, edges, boundaries, aspects)
         eff = ctx_schedule.effective_fidelity(model)
         if all(eff.get(r) == "correct" for r in roots):
