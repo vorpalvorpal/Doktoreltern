@@ -53,6 +53,23 @@ class TestOverRealStore:
         assert src.nodes[parent]["title"] == "Epic"
         assert src.nodes[parent]["comments"] == ["c16"]
 
+    def test_c2_1_components_present_on_a_v2_node(self, tmp_path):
+        # CONTRACT-v2.md Stage 2, C2.1 — a node with design.md + spec.md
+        # written beside node.md surfaces them on the node dict, in
+        # _FILE_COMPONENTS order, absent log.md omitted.
+        store_dir = tmp_path / "store"
+        ctx_store.init_store(str(store_dir))
+        node_id = ctx_store.create_node(str(store_dir), "T", "prose\n")
+        node_dir = store_dir / "nodes" / str(node_id)
+        (node_dir / "design.md").write_text("Design text.\n")
+        (node_dir / "spec.md").write_text("Spec text.\n")
+
+        src = ctx_source.RepoSource(str(store_dir))
+        assert src.nodes[node_id]["components"] == {
+            "design.md": "Design text.\n",
+            "spec.md": "Spec text.\n",
+        }
+
 
 class TestAdapterShape:
     def test_tree_links(self):

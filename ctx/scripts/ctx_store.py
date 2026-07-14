@@ -229,6 +229,29 @@ def _concat_body(node_dir, node_body: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# v2 (CONTRACT-v2.md Stage 2) — read_components, symmetric with read_comments
+# ---------------------------------------------------------------------------
+def read_components(store, node_id) -> dict:
+    """The node's present file components as ``{filename: text}``, in
+    ``_FILE_COMPONENTS`` order (absent files omitted).
+
+    Resolves the node dir via ``_node_dir`` (handles nesting). A missing node
+    dir, or a dir with none of the file components present, → ``{}`` — never
+    raises, so it is safe to call for an injected-fetch RepoSource whose
+    ``store`` is not a real path.
+    """
+    node_dir = _node_dir(store, node_id)
+    if not node_dir.is_dir():
+        return {}
+    out = {}
+    for name in _FILE_COMPONENTS:
+        path = node_dir / name
+        if path.exists():
+            out[name] = path.read_text()
+    return out
+
+
+# ---------------------------------------------------------------------------
 # R4 — read_nodes
 # ---------------------------------------------------------------------------
 def read_nodes(store) -> list:

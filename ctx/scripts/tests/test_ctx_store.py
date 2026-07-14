@@ -243,6 +243,30 @@ class TestReadComments:
 
 
 # ---------------------------------------------------------------------------
+# v2 (CONTRACT-v2.md Stage 2) — read_components, symmetric with read_comments
+# ---------------------------------------------------------------------------
+
+class TestReadComponents:
+    def test_present_components_returned_in_fixed_order(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        node_dir = store / "nodes" / str(node_id)
+        # write out of _FILE_COMPONENTS order to prove the dict's key order is
+        # the fixed order, not insertion/write order.
+        (node_dir / "spec.md").write_text("S\n")
+        (node_dir / "design.md").write_text("D\n")
+        components = ctx_store.read_components(str(store), node_id)
+        assert components == {"design.md": "D\n", "spec.md": "S\n"}
+        assert list(components) == ["design.md", "spec.md"]
+
+    def test_absent_components_omitted_empty_dict(self, store):
+        node_id = ctx_store.create_node(str(store), "Body only", _valid_body())
+        assert ctx_store.read_components(str(store), node_id) == {}
+
+    def test_missing_node_dir_returns_empty_dict_never_raises(self, store):
+        assert ctx_store.read_components(str(store), 9999) == {}
+
+
+# ---------------------------------------------------------------------------
 # R4 — read_nodes
 # ---------------------------------------------------------------------------
 
