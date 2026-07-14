@@ -161,6 +161,23 @@ body {
 }
 .doc-item[data-state='untracked'] .doc-dot { background: var(--muted); }
 
+/* Directory levels of the doc tree (path-qualified doc ids — see nav.ts):
+   one collapsible <details class="doc-dir"> per directory, its summary a
+   muted row in the same rhythm as .doc-item, nested lists indented a step.
+   A flat workspace renders none of these and looks like the old flat list. */
+.doc-dir { margin: 0.1rem 0; }
+.doc-dir > details > .doc-list { margin-left: 0.9rem; }
+.doc-dir-name {
+  padding: 0.28rem 0.5rem;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  overflow-wrap: anywhere;
+}
+.doc-dir-name:hover { background: var(--code-bg); }
+.doc-dir-name::marker { color: var(--muted); font-size: 0.75em; }
+
 /* Node tree: nested native <details>; docs are muted, non-interactive leaves. */
 .node-tree details.node { margin: 0.1rem 0; }
 .node-tree details.node details.node,

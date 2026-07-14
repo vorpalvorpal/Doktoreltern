@@ -12,15 +12,19 @@ repo) for a human↔LLM document-review loop. A human edits a Markdown document 
 leaves comments on it in the browser; Claude reads what changed, edits the
 document and answers the comments; the human reloads and sees Claude's changes as
 a diff with the replies in the margin. The documents under review are the
-**tracked top-level `*.md` files** in `docloop/workspace/` (currently
-`whiteboard-restructure.md`), which is its **own git repo** (separate from the
-code repo, and gitignored from it) where **each commit is one turn**. You don't
-need the dev server running to take a turn — that's the human's GUI; you take
-your turn through the `dl` CLI and commit.
+**tracked `*.md` files** in `docloop/workspace/` — discovered **recursively**,
+each identified by its **path-qualified** workspace-relative id (`whiteboard-
+restructure.md`, `nodes/16/design.md`; the path is the doc id everywhere:
+refs, turn records, thread ownership). The workspace is its **own git repo**
+(separate from the code repo, and gitignored from it) where **each commit is
+one turn**. You don't need the dev server running to take a turn — that's the
+human's GUI; you take your turn through the `dl` CLI and commit.
 
-`docloop/workspace/archive/` is **excluded from the loop**: doc discovery is
-top-level-only, so nothing under `archive/` (the drained move docs) is listed,
-linted as a doc, or staged as one. Do not resurrect those files into the loop.
+Two roots are **excluded from the loop**: `docloop/workspace/archive/` (the
+parked/drained move docs) and `docloop/workspace/threads/` (the comment
+sidecar store — data, not a doc). Dot-paths (`.hidden.md`, `.git/…`) are never
+docs either. Nothing under an excluded root is listed, linted as a doc, or
+staged as one. Do not resurrect archived files into the loop.
 
 Whiteboards under review are working surfaces, not authority — the node tree at
 `store/` at the repo root is the source of truth (see `MAP.md` at the repo
@@ -73,12 +77,13 @@ representation; you own judgement.
    thread resolved **in place** (`threads/<id>/resolved.md`). Use `--note` to
    concede-and-close without losing the reasoning; the note reaches the human
    via the turn record.
-7. **`dl check`** — union-aware lint across all tracked top-level docs plus
-   the `threads/` store; dry-run of commit.
+7. **`dl check`** — union-aware lint across all tracked docs (recursive,
+   path-qualified ids) plus the `threads/` store; dry-run of commit.
 8. **`dl commit -m "<subject>"`** — the transactional turn end: refuses if
    anything outside dl's own writes changed mid-turn (foreign-edit guard),
-   refuses on `dl check` ERRORs, stages exactly the right files (top-level
-   `*.md` + `threads/`, never `turn.xml`), and commits as the fixed model
+   refuses on `dl check` ERRORs, stages exactly the right files (every
+   present doc `*.md`, recursive — never `archive/` or `threads/`-as-docs —
+   plus `threads/`, never `turn.xml`), and commits as the fixed model
    author (`docloop-model <model@docloop>`) with a machine-readable YAML turn
    record in the commit message. `--allow-manual` skips the foreign-edit
    guard and canonicalises hand-edited docs — for deliberate out-of-band
@@ -132,13 +137,15 @@ edits across several sittings, and `dl agenda` recovers any dangling draft as
 its own human turn when you next pick up.
 
 **Left nav (multi-doc).** The GUI lists every reviewable workspace doc (the
-`dl` discovery rule: tracked ∪ working-tree top-level `*.md`; `archive/` is
-never listed) in a left sidebar with a per-doc state (clean / draft /
-untracked); clicking one switches the editor to it — `DOCLOOP_DOC` only picks
-the *initial* doc. Reload / Save draft / Hand to Claude target the doc the
-editor is on. The sidebar also has a **Nodes** section — a read-only tree of
-the ctx node store, shown only when `DOCLOOP_NODES` points at the store's
-root directory.
+`dl` discovery rule: tracked ∪ working-tree `*.md`, recursive; `archive/`,
+`threads/` and dot-paths are never listed) in a left sidebar with a per-doc
+state (clean / draft / untracked). Nested docs are grouped into a collapsible
+directory tree — labels are basenames, the full path lives in the tooltip,
+and a flat workspace still renders the old flat list; clicking a doc switches
+the editor to it — `DOCLOOP_DOC` only picks the *initial* doc. Reload / Save
+draft / Hand to Claude target the doc the editor is on. The sidebar also has
+a **Nodes** section — a read-only tree of the ctx node store, shown only when
+`DOCLOOP_NODES` points at the store's root directory.
 
 **Keep the server alive across sleep.** Run it as a durable, self-owned
 process — a real Terminal window, or `nohup npm run serve >/tmp/docloop.log
