@@ -223,11 +223,23 @@ def deepen_ready(model, n, eff=None):
     fidelity fold caps it — so best-first by priority alone would keep picking the
     high-centrality root before its parts. Leaves are trivially ready. This forces
     leaves-first deepening; it applies in the deepen phase only (post-floor).
+
+    Readiness also honours **`⛔ Blocked-by` dependency edges** (#32.q5 / finding
+    F3): a node depends on things that are not its tree children — a glue leaf
+    depends on the siblings it wires together through a uses-edge, not a
+    parent/child edge. Those inputs must be `correct` before the dependent can be
+    deepened to `correct`, exactly as its own children must. This gates
+    *deepening-to-correct*, never *starting*: the floor phase (below `interface`)
+    does not consult readiness, so a glue node is still designed and planned early
+    — it just cannot validate `correct` until what it uses does. Dangling or
+    dormant dependencies are skipped (same `_active` filter as children).
     """
     if eff is None:
         eff = effective_fidelity(model)
     kids = _children(model).get(n, [])
-    return all(eff.get(c) == "correct" for c in kids if _active(model, c))
+    deps = getattr(model, "blocked_by", {}).get(n, [])
+    return (all(eff.get(c) == "correct" for c in kids if _active(model, c))
+            and all(eff.get(d) == "correct" for d in deps if _active(model, d)))
 
 
 def next_node(model, *, pins=(), skips=()):

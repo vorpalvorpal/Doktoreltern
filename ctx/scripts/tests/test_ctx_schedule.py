@@ -180,3 +180,53 @@ class TestSelection:
     def test_empty_frontier_returns_none(self):
         m = _model([N(1, "# r\n", state="closed", reason="completed")])
         assert ctx_schedule.next_node(m) is None
+
+
+# --- readiness honours Blocked-by dependency edges (F3, #32.q5) --------------
+class TestReadinessBlockedBy:
+    def test_blocked_by_dependency_gates_deepening(self):
+        # #2 is a leaf (tree-readiness alone says ready) but depends on sibling #3
+        # through a uses-edge; #3 is only `mock`, so #2 is not deepen_ready yet.
+        m = _model([
+            N(1, "# r\n"),
+            N(2, "⛔ Blocked-by: #3\n📊 Fidelity: interface\n", parent=1),
+            N(3, "📊 Fidelity: mock\n", parent=1),
+        ])
+        assert ctx_schedule.deepen_ready(m, 2) is False
+        assert ctx_schedule.deepen_ready(m, 3) is True     # leaf, no deps
+
+    def test_ready_once_the_dependency_is_correct(self):
+        m = _model([
+            N(1, "# r\n"),
+            N(2, "⛔ Blocked-by: #3\n📊 Fidelity: interface\n", parent=1),
+            N(3, "📊 Fidelity: correct\n", parent=1),
+        ])
+        assert ctx_schedule.deepen_ready(m, 2) is True
+
+    def test_dangling_or_dormant_dependency_does_not_block_forever(self):
+        # a Blocked-by to a node absent from the frontier is skipped (same
+        # _active filter as children) — it cannot wedge readiness shut.
+        m = _model([
+            N(1, "# r\n"),
+            N(2, "⛔ Blocked-by: #99\n📊 Fidelity: interface\n", parent=1),
+            N(3, "📊 Fidelity: correct\n", labels=("dormant",),
+              state="closed", parent=1),
+        ])
+        assert ctx_schedule.deepen_ready(m, 2) is True
+
+    def test_blocked_by_and_children_both_required(self):
+        # #2 has both a child (#4) and a dependency (#3); both must be correct.
+        m = _model([
+            N(1, "# r\n"),
+            N(2, "⛔ Blocked-by: #3\n", parent=1),
+            N(3, "📊 Fidelity: correct\n", parent=1),
+            N(4, "📊 Fidelity: mock\n", parent=2),
+        ])
+        assert ctx_schedule.deepen_ready(m, 2) is False    # child #4 not correct
+        m2 = _model([
+            N(1, "# r\n"),
+            N(2, "⛔ Blocked-by: #3\n", parent=1),
+            N(3, "📊 Fidelity: mock\n", parent=1),
+            N(4, "📊 Fidelity: correct\n", parent=2),
+        ])
+        assert ctx_schedule.deepen_ready(m2, 2) is False   # dependency #3 not correct
