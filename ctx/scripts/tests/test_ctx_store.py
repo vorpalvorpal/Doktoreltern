@@ -290,6 +290,91 @@ class TestReadNodes:
 
 
 # ---------------------------------------------------------------------------
+# v2 (Stage 1, CONTRACT-v2.md) — component concat via read_nodes
+#
+# Synthetic v2 fixtures only (no dogfood backfill — the walking-skeleton store
+# is retired, CONTRACT-v2.md). Component files (design.md/spec.md/log.md) are
+# written directly beside node.md: create_node/add_comment don't know about
+# components yet (that's Stage 2/3), so these tests poke the filesystem
+# directly to build the tiny v2 worlds this stage's read path must handle.
+# ---------------------------------------------------------------------------
+
+class TestV2ComponentConcat:
+    def test_c1_1_v1_only_node_body_is_byte_identical(self, store):
+        # C1.1 — a node with only node.md (no components present) round-trips
+        # its body byte-for-byte, exactly as before v2 landed. [MEASURE TWICE]:
+        # confirm with an unfiltered `diff`, not just `==` (an rtk hook can
+        # filter shell diff output and misreport "identical").
+        body = "Some v1 prose.\n\nA second paragraph.\n"
+        ctx_store.create_node(str(store), "V1 node", body)
+        [node] = ctx_store.read_nodes(str(store))
+        assert node.body == body
+
+        expected = store / "expected_body.txt"
+        actual = store / "actual_body.txt"
+        expected.write_text(body)
+        actual.write_text(node.body)
+        result = subprocess.run(
+            ["diff", str(expected), str(actual)], capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stdout
+
+    def test_c1_2_full_concat_all_four_pieces(self, store):
+        # C1.2 — node.md "A\n" + design "D\n" + spec "S\n" + log "L\n"
+        node_id = ctx_store.create_node(str(store), "T", "A\n")
+        node_dir = store / "nodes" / str(node_id)
+        (node_dir / "design.md").write_text("D\n")
+        (node_dir / "spec.md").write_text("S\n")
+        (node_dir / "log.md").write_text("L\n")
+        [node] = ctx_store.read_nodes(str(store))
+        assert node.body == "A\n\n\nD\n\n\nS\n\n\nL\n"
+
+    def test_c1_3_thin_index_two_components_no_leading_blank(self, store):
+        # C1.3 — empty node.md body + design "D\n" + spec "S\n"; the empty
+        # node_body piece is filtered out, so no leading blank line appears.
+        node_id = ctx_store.create_node(str(store), "T", "")
+        node_dir = store / "nodes" / str(node_id)
+        (node_dir / "design.md").write_text("D\n")
+        (node_dir / "spec.md").write_text("S\n")
+        [node] = ctx_store.read_nodes(str(store))
+        assert node.body == "D\n\n\nS\n"
+
+    def test_c1_4_single_component_is_returned_verbatim(self, store):
+        # C1.4 — empty node.md body + only log "L\n" -> "L\n" verbatim (single
+        # present piece, no join at all).
+        node_id = ctx_store.create_node(str(store), "T", "")
+        node_dir = store / "nodes" / str(node_id)
+        (node_dir / "log.md").write_text("L\n")
+        [node] = ctx_store.read_nodes(str(store))
+        assert node.body == "L\n"
+
+    def test_c1_5_markers_gather_across_components_into_collate(self, store):
+        # C1.5 — a design.md marker and a spec.md marker on one node both
+        # surface in collate(read_nodes(...))'s model (the concat makes them
+        # one blob for parse()); a keyed id declared once in design.md and
+        # merely referenced as prose in spec.md stays a single registries
+        # entry — unique per node, not duplicated by the concatenation.
+        node_id = ctx_store.create_node(str(store), "T", "")
+        node_dir = store / "nodes" / str(node_id)
+        (node_dir / "design.md").write_text(
+            "🏷️ aspect: numerics\n"
+            f"❓ Question: #{node_id}.q1 open Does the combiner hold?\n"
+        )
+        (node_dir / "spec.md").write_text(
+            "📚 Cites: smith2020\n"
+            f"See #{node_id}.q1 above for the open question.\n"
+        )
+        model = ctx_core.collate(ctx_store.read_nodes(str(store)))
+        assert "numerics" in model.aspects[node_id]
+        assert node_id in model.registry["smith2020"]
+        questions = [
+            kv for (nid, kv) in model.registries[ctx_core.QUESTION] if nid == node_id
+        ]
+        assert len(questions) == 1
+        assert questions[0].id == f"#{node_id}.q1"
+
+
+# ---------------------------------------------------------------------------
 # R5 — id allocation
 # ---------------------------------------------------------------------------
 

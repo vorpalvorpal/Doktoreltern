@@ -29,6 +29,10 @@ import ctx_core
 
 _FRONTMATTER_KEYS = ("title", "state", "state_reason", "labels")
 
+# v2 (CONTRACT-v2.md) — file components under a node dir, alongside node.md.
+# FIXED ORDER, load-bearing: this is the order pieces are concatenated in.
+_FILE_COMPONENTS = ("design.md", "spec.md", "log.md")
+
 
 # ---------------------------------------------------------------------------
 # Errors
@@ -201,6 +205,30 @@ def read_comments(store, node_id) -> list:
 
 
 # ---------------------------------------------------------------------------
+# v2 (CONTRACT-v2.md) — component concat
+# ---------------------------------------------------------------------------
+def _read_component(node_dir, name: str) -> str:
+    """Text of node_dir/name, or "" when the file is absent."""
+    path = Path(node_dir) / name
+    if not path.exists():
+        return ""
+    return path.read_text()
+
+
+def _concat_body(node_dir, node_body: str) -> str:
+    """A node's Node.body = the present component pieces joined by a blank line.
+
+    pieces = [node_body, design.md text, spec.md text, log.md text] in that fixed
+    order; keep only non-empty pieces; join with exactly "\n\n" between adjacent
+    present pieces. One present piece is returned verbatim (byte-identical) — this
+    is what makes a v1 node's concat identical to its node.md body. Zero pieces → "".
+    """
+    pieces = [node_body] + [_read_component(node_dir, name) for name in _FILE_COMPONENTS]
+    present = [p for p in pieces if p]
+    return "\n\n".join(present)
+
+
+# ---------------------------------------------------------------------------
 # R4 — read_nodes
 # ---------------------------------------------------------------------------
 def read_nodes(store) -> list:
@@ -217,7 +245,8 @@ def read_nodes(store) -> list:
         node_file = path / "node.md"
         if not node_file.exists():
             continue
-        frontmatter, body = _read_node_file(node_file)
+        frontmatter, node_body = _read_node_file(node_file)
+        body = _concat_body(path, node_body)
         comments = read_comments(store, node_id)
         out.append(ctx_core.Node(
             node_id,
