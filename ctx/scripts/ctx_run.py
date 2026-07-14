@@ -245,6 +245,31 @@ def parse_difficulty(text: str):
     return int(m[-1].group(1)) if m else None
 
 
+# Stage 3 (CONTRACT-v2.md): fields worth graduating from the usage.jsonl
+# telemetry record into a durable per-dispatch .records/ evidence file.
+_RECORD_FIELDS = (
+    "ts", "model", "ok", "fault", "difficulty", "wall_secs", "note",
+    "total_cost_usd", "duration_ms", "num_turns", "usage",
+)
+
+
+def _record_body(record: dict) -> str:
+    """Format one dispatch's telemetry `record` dict as a .records/ body.
+
+    A `# dispatch — <move> on #<node> (tick <t>)` heading, then one `- key:
+    value` line per present, non-None field in `_RECORD_FIELDS` order. Meant
+    to be read by a human or a future migration pass, not parsed by markers
+    (append_record applies no lint to it).
+    """
+    lines = [f"# dispatch — {record['move']} on #{record['node']} "
+             f"(tick {record['tick']})"]
+    for key in _RECORD_FIELDS:
+        value = record.get(key)
+        if value is not None:
+            lines.append(f"- {key}: {value}")
+    return "\n".join(lines) + "\n"
+
+
 def make_dispatch(store: str, project: str, source_nodes, *, model_name="sonnet",
                   max_turns=40, timeout=1800, skill_prefix="", dispatch_cmd=None,
                   states=None, log=print):
@@ -289,6 +314,11 @@ def make_dispatch(store: str, project: str, source_nodes, *, model_name="sonnet"
         }
         with usage_log.open("a") as fh:
             fh.write(json.dumps(record) + "\n")
+        try:
+            ctx_store.append_record(store, decision.node, decision.move,
+                                    _record_body(record))
+        except ctx_store.StoreError as exc:
+            log(f"  (record skipped for #{decision.node}: {exc})")
         log(f"  tick {decision.tick}: {decision.move.upper()} on "
             f"#{decision.node} -> {'ok' if ok else 'fail'}"
             f"{f' (fault={fault})' if fault else ''}")

@@ -267,6 +267,111 @@ class TestReadComponents:
 
 
 # ---------------------------------------------------------------------------
+# v2 (CONTRACT-v2.md Stage 3) — write_component (validated, edit-in-place)
+# ---------------------------------------------------------------------------
+
+class TestWriteComponent:
+    def test_c3_1_writes_file_one_commit_and_is_read_back(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        before_log = _commit_subjects(store)
+        ctx_store.write_component(str(store), node_id, "spec.md", "Spec.\n")
+        after_log = _commit_subjects(store)
+        assert len(after_log) == len(before_log) + 1
+        assert after_log[-1] == f"node #{node_id}: write spec.md"
+        assert ctx_store.read_components(str(store), node_id) == {"spec.md": "Spec.\n"}
+
+    def test_c3_2_rejects_malformed_body_writes_nothing(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        before_log = _commit_subjects(store)
+        with pytest.raises(ctx_store.ValidationError):
+            ctx_store.write_component(str(store), node_id, "spec.md", _malformed_body())
+        assert _commit_subjects(store) == before_log
+        assert not (store / "nodes" / str(node_id) / "spec.md").exists()
+        # [MEASURE TWICE]: unfiltered `git status --porcelain` — the store is
+        # byte-unchanged after a rejected write (an rtk hook can misreport a
+        # filtered diff/status as "identical" when it is not).
+        status = _git(store, "status", "--porcelain").stdout
+        assert status.strip() == ""
+
+    def test_c3_3_rejects_unknown_component_writes_nothing(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        before_log = _commit_subjects(store)
+        with pytest.raises(ctx_store.StoreError) as exc:
+            ctx_store.write_component(str(store), node_id, "notes.md", "Notes.\n")
+        assert not isinstance(exc.value, ctx_store.ValidationError)
+        assert "notes.md" in str(exc.value)
+        assert _commit_subjects(store) == before_log
+        assert not (store / "nodes" / str(node_id) / "notes.md").exists()
+        status = _git(store, "status", "--porcelain").stdout
+        assert status.strip() == ""
+
+    def test_c3_4_second_write_overwrites_in_place_and_commits_again(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        ctx_store.write_component(str(store), node_id, "spec.md", "First.\n")
+        before = len(_commit_subjects(store))
+        ctx_store.write_component(str(store), node_id, "spec.md", "Second.\n")
+        assert len(_commit_subjects(store)) == before + 1
+        assert ctx_store.read_components(str(store), node_id) == {"spec.md": "Second.\n"}
+
+    def test_write_component_raises_storeerror_for_missing_node(self, store):
+        with pytest.raises(ctx_store.StoreError):
+            ctx_store.write_component(str(store), 999, "spec.md", "Spec.\n")
+
+
+# ---------------------------------------------------------------------------
+# v2 (CONTRACT-v2.md Stage 3) — append_record (append-only .records/, no lint)
+# ---------------------------------------------------------------------------
+
+class TestAppendRecord:
+    def test_c3_5_creates_numbered_file_and_commits(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        before_log = _commit_subjects(store)
+        filename = ctx_store.append_record(str(store), node_id, "validate", "VERDICT: ok\n")
+        assert filename == "0001-validate.md"
+        record_path = store / "nodes" / str(node_id) / ".records" / filename
+        assert record_path.read_text() == "VERDICT: ok\n"
+        after_log = _commit_subjects(store)
+        assert len(after_log) == len(before_log) + 1
+        assert after_log[-1] == f"node #{node_id}: record {filename}"
+
+    def test_c3_5_second_call_is_monotonic_seq(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        ctx_store.append_record(str(store), node_id, "validate", "VERDICT: ok\n")
+        second = ctx_store.append_record(str(store), node_id, "construct", "VERDICT: ok\n")
+        assert second == "0002-construct.md"
+
+    def test_c3_5_no_lint_bare_verdict_line_accepted_verbatim(self, store):
+        # Records are evidence, not marker documents — fs_checks' L1 pass does
+        # not parse .records/, and append_record itself never calls _validate.
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        body = "VERDICT: ok - plain evidence note, no marker grammar here\n"
+        filename = ctx_store.append_record(str(store), node_id, "validate", body)
+        record_path = store / "nodes" / str(node_id) / ".records" / filename
+        assert record_path.read_text() == body
+
+    def test_c3_6_no_update_api_two_calls_both_present(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        first = ctx_store.append_record(str(store), node_id, "validate", "first\n")
+        second = ctx_store.append_record(str(store), node_id, "validate", "second\n")
+        assert first != second
+        records_dir = store / "nodes" / str(node_id) / ".records"
+        assert (records_dir / first).read_text() == "first\n"
+        assert (records_dir / second).read_text() == "second\n"
+        # There is deliberately no overwrite/update entry point for records.
+        assert not hasattr(ctx_store, "update_record")
+        assert not hasattr(ctx_store, "write_record")
+
+    def test_append_record_slugifies_move_name(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        filename = ctx_store.append_record(str(store), node_id, "Interface Move!", "x\n")
+        assert filename == "0001-interface-move.md"
+
+    def test_append_record_raises_storeerror_for_missing_node(self, store):
+        with pytest.raises(ctx_store.StoreError):
+            ctx_store.append_record(str(store), 999, "validate", "x\n")
+
+
+# ---------------------------------------------------------------------------
 # R4 — read_nodes
 # ---------------------------------------------------------------------------
 
@@ -549,6 +654,28 @@ class TestAddComment:
     def test_add_comment_raises_storeerror_for_missing_node(self, store):
         with pytest.raises(ctx_store.StoreError):
             ctx_store.add_comment(str(store), 999, "c1\n")
+
+    def test_c3_7_frozen_once_a_component_file_exists_mentions_log_and_records(self, store):
+        # D5: the moment ANY file component exists, .comments/ is frozen v1
+        # evidence — add_comment refuses, pointing at log.md / .records/.
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        ctx_store.write_component(str(store), node_id, "design.md", "Design.\n")
+        before_log = _commit_subjects(store)
+        with pytest.raises(ctx_store.StoreError) as exc:
+            ctx_store.add_comment(str(store), node_id, "c1\n")
+        message = str(exc.value)
+        assert "log.md" in message
+        assert ".records" in message
+        assert _commit_subjects(store) == before_log     # nothing written
+
+    def test_c3_7_plain_v1_node_add_comment_unaffected(self, store):
+        # Regression: a node with only node.md (no component files) is not
+        # frozen — existing add_comment behaviour is unchanged.
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        seq = ctx_store.add_comment(str(store), node_id, "c1\n")
+        assert seq == 1
+        [comment] = ctx_store.read_comments(str(store), node_id)
+        assert comment.text == "c1"
 
 
 class TestUpdateComment:

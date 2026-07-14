@@ -22,6 +22,7 @@ ancestor dir (None for a root directly under nodes/).
 """
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -252,6 +253,74 @@ def read_components(store, node_id) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# v2 (CONTRACT-v2.md Stage 3) — write_component (validated, edit-in-place)
+# ---------------------------------------------------------------------------
+def write_component(store, node_id: int, component: str, body: str) -> None:
+    """Write (or overwrite) a whitelisted file component beside node.md.
+
+    Lint-before-write, same as the rest of the write path: a malformed body
+    raises ValidationError and nothing is written. Components are "edited in
+    place" (#64) — a second call for the same component overwrites it; git
+    history (one commit per write) is the ledger, not an update API.
+    """
+    if component not in _FILE_COMPONENTS:
+        raise StoreError(f"not a writable component: {component!r}")
+
+    store_path = Path(store)
+    if not _node_file(store_path, node_id).exists():
+        raise StoreError(f"no such node: {node_id}")
+
+    _validate(body)
+
+    node_dir = _node_dir(store_path, node_id)
+    (node_dir / component).write_text(body)
+    _commit(store_path, f"node #{node_id}: write {component}")
+
+
+# ---------------------------------------------------------------------------
+# v2 (CONTRACT-v2.md Stage 3) — append_record (append-only .records/, no lint)
+# ---------------------------------------------------------------------------
+def _records_dir(store, node_id) -> Path:
+    # `.records` — dot-prefixed component dir (never mistaken for a child
+    # node); per-dispatch evidence files, immutable once written (D1).
+    return _node_dir(store, node_id) / ".records"
+
+
+def append_record(store, node_id: int, move: str, body: str) -> str:
+    """Append one immutable per-dispatch evidence file to .records/.
+
+    Filename is `NNNN-<slug>.md` — seq is one past the highest existing
+    leading integer (or 1 when empty); slug is `move` lowercased with
+    non-alnum runs collapsed to a single hyphen and stripped at the ends. No
+    lint (records are evidence, not marker documents) and no update API —
+    each call only ever adds a new file. Returns the filename.
+    """
+    store_path = Path(store)
+    if not _node_file(store_path, node_id).exists():
+        raise StoreError(f"no such node: {node_id}")
+
+    records_dir = _records_dir(store_path, node_id)
+    records_dir.mkdir(parents=True, exist_ok=True)
+
+    existing_seqs = []
+    for path in records_dir.iterdir():
+        if not path.name.endswith(".md"):
+            continue
+        lead = path.name.split("-", 1)[0]
+        try:
+            existing_seqs.append(int(lead))
+        except ValueError:
+            pass
+    seq = (max(existing_seqs) + 1) if existing_seqs else 1
+
+    slug = re.sub(r"[^a-z0-9]+", "-", move.lower()).strip("-")
+    filename = f"{seq:04d}-{slug}.md"
+    (records_dir / filename).write_text(body)
+    _commit(store_path, f"node #{node_id}: record {filename}")
+    return filename
+
+
+# ---------------------------------------------------------------------------
 # R4 — read_nodes
 # ---------------------------------------------------------------------------
 def read_nodes(store) -> list:
@@ -391,6 +460,16 @@ def add_comment(store, node_id: int, body: str) -> int:
     store_path = Path(store)
     if not _node_file(store_path, node_id).exists():
         raise StoreError(f"no such node: {node_id}")
+
+    # D5: the moment any file component exists, .comments/ is frozen v1
+    # evidence — a plain v1 node (node.md only) is unaffected.
+    node_dir = _node_dir(store_path, node_id)
+    if any((node_dir / name).exists() for name in _FILE_COMPONENTS):
+        raise StoreError(
+            f"node {node_id} is frozen (has component files); .comments/ is "
+            f"frozen v1 evidence — write to log.md (edited ledger) or "
+            f".records/ (events) instead"
+        )
 
     _validate(body)
 

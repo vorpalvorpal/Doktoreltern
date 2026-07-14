@@ -1,5 +1,6 @@
 """ctx_run — the store-backed runner shell around ctx_driver (MVP)."""
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -263,6 +264,42 @@ class TestEndToEnd:
         # run-state persisted: both nodes done
         state = json.loads((s / ".telemetry" / "run-state.json").read_text())
         assert state[str(root)]["done"] and state[str(leaf)]["done"]
+
+    def test_c3_8_records_dir_gets_one_file_per_dispatch(self, store):
+        # Stage 3 (CONTRACT-v2.md): every dispatch also lands a per-dispatch
+        # record in .records/, alongside the pre-existing usage.jsonl telemetry
+        # (which must keep working unchanged).
+        s, root, leaf = store
+        rc = ctx_run.main([
+            str(s), "--project", str(s), "--dispatch-cmd",
+            "printf 'DIFFICULTY: 2\\nVERDICT: ok - stub executor\\n'",
+        ])
+        assert rc == 0
+
+        lines = [json.loads(x) for x in
+                 (s / ".telemetry" / "usage.jsonl").read_text().splitlines()]
+        # usage.jsonl is still written unchanged (existing runner behaviour).
+        assert (s / ".telemetry" / "usage.jsonl").exists()
+        assert len(lines) >= 2 * 6
+
+        # root has no parent, so its dir sits directly under nodes/<root>.
+        root_records = s / "nodes" / str(root) / ".records"
+        assert root_records.is_dir()
+        root_moves = [rec["move"] for rec in lines if rec["node"] == root]
+        root_files = sorted(p.name for p in root_records.glob("*.md"))
+        assert len(root_files) == len(root_moves)      # one record per dispatch
+        for fname in root_files:
+            assert re.match(r"^\d{4}-[a-z0-9-]+\.md$", fname)
+
+        first_text = (root_records / root_files[0]).read_text()
+        assert f"on #{root}" in first_text             # names the node
+        assert "ok: True" in first_text                # names the verdict
+
+        # leaf nests inside root's dir (parent=root) — same evidence pattern.
+        leaf_records = s / "nodes" / str(root) / str(leaf) / ".records"
+        assert leaf_records.is_dir()
+        leaf_moves = [rec["move"] for rec in lines if rec["node"] == leaf]
+        assert len(list(leaf_records.glob("*.md"))) == len(leaf_moves)
 
     def test_unstamped_parent_folds_without_a_floor_move(self, unstamped_store,
                                                          capsys):
