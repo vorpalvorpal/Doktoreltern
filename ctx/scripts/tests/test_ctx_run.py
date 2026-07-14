@@ -305,6 +305,36 @@ class TestEndToEnd:
         assert "VERDICT" in out                       # the protocol is in the prompt
         assert not (s / ".telemetry" / "usage.jsonl").exists()
 
+    def test_node_created_by_a_dispatch_is_driven_in_the_same_run(self, store,
+                                                                  tmp_path):
+        # The full loop: the FIRST dispatched move decomposes the tree (writes
+        # a new node into the store), and the per-tick refresh picks it up —
+        # the newcomer is dispatched and driven to correct in the same run.
+        s, root, leaf = store
+        flag = tmp_path / "spawned"
+        spawn_py = tmp_path / "spawn.py"
+        body = "🧭 Confidence: low\n📊 Fidelity: stub\n\nSpawned mid-run.\n"
+        spawn_py.write_text(
+            "import sys\n"
+            f"sys.path.insert(0, {str(Path(ctx_run.__file__).parent)!r})\n"
+            "import ctx_store\n"
+            f"ctx_store.create_node({str(s)!r}, 'spawned', {body!r}, "
+            f"parent={root})\n",
+            encoding="utf-8")
+        cmd = (f"if [ ! -e {flag} ]; then touch {flag}; "
+               f"{sys.executable} {spawn_py}; fi; "
+               "printf 'DIFFICULTY: 1\\nVERDICT: ok - stub executor\\n'")
+
+        rc = ctx_run.main([str(s), "--project", str(s), "--budget", "30",
+                           "--dispatch-cmd", cmd])
+        assert rc == 0                                # folded correct → the
+                                                      # newcomer was completed
+        lines = [json.loads(x) for x in
+                 (s / ".telemetry" / "usage.jsonl").read_text().splitlines()]
+        spawned = leaf + 1                            # next id the store allocates
+        spawned_moves = [rec["move"] for rec in lines if rec["node"] == spawned]
+        assert "interface" in spawned_moves and "validate" in spawned_moves
+
     def test_resume_skips_done_nodes(self, store):
         s, root, leaf = store
         ctx_run.main([str(s), "--project", str(s), "--dispatch-cmd",
