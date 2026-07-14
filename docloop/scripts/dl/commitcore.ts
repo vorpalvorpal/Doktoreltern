@@ -14,6 +14,7 @@ import { readScratch, clearScratch, type TurnScratch } from './journal';
 import { refOf } from './refs';
 import { checkWorkspace } from './checkcore';
 import { canonicalize } from './canonical';
+import { isDocPath, isDocDir } from './docs';
 
 export interface TurnRecord {
   'docloop-turn': number;
@@ -52,10 +53,27 @@ function buildTurnRecordYaml(
   return dump(record).trimEnd();
 }
 
-/** Every top-level `*.md` file currently present in the workspace (not git-tracked-ness — presence). */
-async function topLevelMdFiles(ws: string): Promise<string[]> {
-  const entries = await readdir(ws, { withFileTypes: true });
-  return entries.filter((e) => e.isFile() && e.name.endsWith('.md')).map((e) => e.name);
+/**
+ * Every reviewable `*.md` doc file currently PRESENT in the workspace (not
+ * git-tracked-ness — presence), recursively, as workspace-relative paths —
+ * the same exclusion rule as doc discovery (`docs.ts` isDocPath: never
+ * `threads/`, `archive/`, or dot-paths).
+ */
+async function presentDocFiles(ws: string): Promise<string[]> {
+  async function walk(dir: string, relPrefix: string): Promise<string[]> {
+    const entries = await readdir(dir, { withFileTypes: true });
+    const out: string[] = [];
+    for (const e of entries) {
+      const rel = relPrefix ? `${relPrefix}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        if (isDocDir(rel)) out.push(...(await walk(join(dir, e.name), rel)));
+      } else if (e.isFile() && isDocPath(rel)) {
+        out.push(rel);
+      }
+    }
+    return out;
+  }
+  return walk(ws, '');
 }
 
 /** Every file currently present under `<ws>/threads/`, recursively, as repo-relative paths (`threads/t1/0001.md`). */
@@ -93,7 +111,7 @@ async function foreignEditGuard(ws: string, journal: TurnScratch | null, allowMa
   }
   if (allowManual) return;
 
-  const files = [...(await topLevelMdFiles(ws)), ...(await threadFiles(ws))];
+  const files = [...(await presentDocFiles(ws)), ...(await threadFiles(ws))];
   for (const doc of files) {
     const bytes = readFileSync(join(ws, doc), 'utf8');
     const recordedHash = journal.writes[doc];
@@ -111,13 +129,13 @@ async function foreignEditGuard(ws: string, journal: TurnScratch | null, allowMa
 }
 
 /**
- * Under `--allow-manual`: canonicalise every top-level tracked doc so a hand
- * edit lands in canonical form before check/stage (plan C2). The
+ * Under `--allow-manual`: canonicalise every present doc so a hand edit
+ * lands in canonical form before check/stage (plan C2). The
  * content-preservation guard inside `canonicalize` still applies — a throw
  * here refuses the commit, same as any other pre-commit failure.
  */
 async function canonicaliseTrackedDocs(ws: string): Promise<void> {
-  const files = await topLevelMdFiles(ws);
+  const files = await presentDocFiles(ws);
   for (const doc of files) {
     const path = join(ws, doc);
     const bytes = readFileSync(path, 'utf8');
@@ -156,7 +174,7 @@ export async function commitTurn(ws: string, opts: CommitOpts): Promise<CommitRe
     throw new Error(`check failed (${errors.length} error${errors.length === 1 ? '' : 's'}): ${errors[0].message}`);
   }
 
-  const files = await topLevelMdFiles(ws);
+  const files = await presentDocFiles(ws);
   const addArgs = [...files];
   try {
     await readdir(join(ws, 'threads'));
@@ -169,7 +187,7 @@ export async function commitTurn(ws: string, opts: CommitOpts): Promise<CommitRe
   const journalWrites = journal?.writes ?? {};
   const docs: Record<string, { before: string; after: string }> = {};
   for (const [doc, after] of Object.entries(journalWrites)) {
-    if (doc.includes('/')) continue; // thread-store paths (journalled for the foreign-edit guard) are not top-level docs
+    if (!isDocPath(doc)) continue; // thread-store paths (journalled for the foreign-edit guard) are not docs
     const beforeBytes = await docAt(ws, 'HEAD', doc);
     docs[doc] = { before: refOf(beforeBytes), after };
   }

@@ -1,9 +1,9 @@
 /**
  * `dl check` — union-aware workspace lint (package C1). Extends
  * `scripts/lint-turn-core.ts`'s single-doc anchor/thread checks to the whole
- * workspace (all tracked top-level `*.md` + `threads/`), and adds the
- * canonical-form gate (rule 6) and the anchor-placement / Milkdown-divergent
- * guards (rules 7-9) the spike flagged.
+ * workspace (all tracked `*.md` docs, recursive — see docs.ts — plus
+ * `threads/`), and adds the canonical-form gate (rule 6) and the
+ * anchor-placement / Milkdown-divergent guards (rules 7-9) the spike flagged.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -128,9 +128,9 @@ function milkdownGuardIssues(source: string): CheckIssue[] {
 }
 
 /**
- * The full union-aware lint. All tracked top-level `*.md` docs + the
- * `threads/` store are read once; rules 1-9 (see dl-C-check-commit-verbs.md)
- * are checked across that union.
+ * The full union-aware lint. All tracked `*.md` docs (recursive,
+ * path-qualified ids) + the `threads/` store are read once; rules 1-9 (see
+ * dl-C-check-commit-verbs.md) are checked across that union.
  */
 export async function checkWorkspace(ws: string): Promise<CheckIssue[]> {
   const issues: CheckIssue[] = [];

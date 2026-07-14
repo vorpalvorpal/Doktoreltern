@@ -1,7 +1,7 @@
 import { mkdir, writeFile, readFile, readdir, access, stat } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { renderTurn } from './turn';
@@ -9,6 +9,7 @@ import { listThreads, addComment, updateComment, resolveThread, newThreadId } fr
 import { listSkills, readSkillBody } from './skill-frontmatter';
 import { readNodeTree } from './nodes-fs';
 import { canonicalize } from '../scripts/dl/canonical';
+import { isDocPath, isDocDir } from '../scripts/dl/docs';
 
 const run = promisify(execFile);
 
@@ -53,19 +54,15 @@ export interface ApiConfig {
 }
 
 /**
- * Whether `name` is a safe doc name for the `?doc=` parameter (shared by
- * /doc, /commit and /save-draft): non-empty, no path separators, not a dot
- * path, does not start with `.`, and ends with `.md`. This is the
- * path-traversal guard; `turn.xml` is excluded by the `.md` rule.
+ * Whether `name` is a safe doc id for the `?doc=` parameter (shared by
+ * /doc, /commit and /save-draft): a workspace-relative `*.md` path with no
+ * dot/empty segments (so no `..` traversal, no `.hidden`), no backslashes,
+ * and not under `archive/` or `threads/` — exactly the `scripts/dl/docs.ts`
+ * discovery rule, so the API accepts precisely what enumeration can list.
+ * `turn.xml` is excluded by the `.md` rule.
  */
 function isSafeDocName(name: string): boolean {
-  return (
-    name.length > 0 &&
-    !name.includes('/') &&
-    !name.includes('\\') &&
-    !name.startsWith('.') &&
-    name.endsWith('.md')
-  );
+  return isDocPath(name);
 }
 
 /**
@@ -84,8 +81,9 @@ function isSafeDocName(name: string): boolean {
  *                          + commits, a GUI reload shows Claude's changes as
  *                          diffs against the human's last turn.
  *   GET  /docs           — the workspace's reviewable docs (tracked ∪
- *                          working-tree top-level *.md) with per-doc state,
- *                          for the left-nav doc list. /doc, /commit and
+ *                          working-tree *.md, recursive; doc id = the
+ *                          workspace-relative path) with per-doc state, for
+ *                          the left-nav doc tree. /doc, /commit and
  *                          /save-draft all take `?doc=<name>` to target a doc
  *                          other than the configured default.
  *   GET  /nodes          — the ctx node-store seam: a read-only directory
@@ -145,27 +143,33 @@ export function createApi(
   };
 
   /**
-   * Tracked top-level `*.md` files of the workspace repo, sorted — the same
-   * discovery rule as `scripts/dl/docs.ts` `trackedDocs` (replicated rather
-   * than imported: this module's git plumbing already runs `-C workspace`).
-   * Never `turn.xml` (not `.md`), never nested files (so never `threads/`,
-   * and never the parked docs under `archive/`).
+   * Tracked `*.md` doc paths of the workspace repo, recursive, sorted — the
+   * same discovery rule as `scripts/dl/docs.ts` `trackedDocs` (the git call
+   * is replicated rather than imported because this module's plumbing already
+   * runs `-C workspace`; the path rule itself IS the imported isDocPath).
+   * Never `turn.xml` (not `.md`), never `threads/` or `archive/` or dot-paths.
    */
   const trackedDocs = async (): Promise<string[]> => {
     const { stdout } = await git('ls-files', '--', '*.md');
-    return stdout
-      .split('\n')
-      .filter((f) => f.length > 0 && !f.includes('/'))
-      .sort();
+    return stdout.split('\n').filter(isDocPath).sort();
   };
 
-  /** Working-tree top-level `*.md` files (no dot-files), sorted. */
+  /** Working-tree `*.md` doc paths (recursive, same exclusion rule), sorted. */
   const workingTreeDocs = async (): Promise<string[]> => {
-    const entries = await readdir(workspace, { withFileTypes: true });
-    return entries
-      .filter((e) => e.isFile() && e.name.endsWith('.md') && !e.name.startsWith('.'))
-      .map((e) => e.name)
-      .sort();
+    const out: string[] = [];
+    const walk = async (dir: string, relPrefix: string): Promise<void> => {
+      const entries = await readdir(dir, { withFileTypes: true });
+      for (const e of entries) {
+        const rel = relPrefix ? `${relPrefix}/${e.name}` : e.name;
+        if (e.isDirectory()) {
+          if (isDocDir(rel)) await walk(join(dir, e.name), rel);
+        } else if (e.isFile() && isDocPath(rel)) {
+          out.push(rel);
+        }
+      }
+    };
+    await walk(workspace, '');
+    return out.sort();
   };
 
   const readBody = (req: IncomingMessage): Promise<string> =>
@@ -238,6 +242,9 @@ export function createApi(
             .catch(() => null);
           await writeFile(turnPath, renderTurn(prevMd, newMd, store, sinceIso), 'utf8');
 
+          // A nested doc's parent directory may not exist yet (path-qualified
+          // ids — e.g. `nodes/16/design.md` on its first commit).
+          await mkdir(dirname(pathFor(name)), { recursive: true });
           await writeFile(pathFor(name), newMd, 'utf8');
           // Commit BOTH the doc and the sidecar store, so a turn that only
           // touches threads (e.g. a reply, no doc edit) still advances HEAD —
@@ -272,6 +279,7 @@ export function createApi(
         try {
           await ensureRepo();
           const md = await canonicalize(await readBody(req));
+          await mkdir(dirname(pathFor(name)), { recursive: true });
           await writeFile(pathFor(name), md, 'utf8');
           send(res, 200, { ok: true });
         } catch (err) {
@@ -317,9 +325,9 @@ export function createApi(
       return;
     }
 
-    // GET /docs — the workspace's reviewable docs for the left-nav doc list:
-    // union of tracked top-level *.md (the scripts/dl/docs.ts discovery rule)
-    // and working-tree top-level *.md, each with a state:
+    // GET /docs — the workspace's reviewable docs for the left-nav doc tree:
+    // union of tracked *.md (the scripts/dl/docs.ts discovery rule, recursive,
+    // path-qualified ids) and working-tree *.md, each with a state:
     //   untracked — in the working tree but never committed;
     //   draft     — tracked, working-tree bytes differ from HEAD (includes
     //               "deleted from the working tree but still tracked");
