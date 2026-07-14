@@ -64,6 +64,18 @@ class TestNextMove:
         run = D.NodeRun(fidelity="interface", cursor=D.TEST)
         assert D.next_move(run, m, 1) == D.TEST
 
+    def test_unstamped_internal_node_skips_the_floor_move(self):
+        # fidelity=None on a node with children: derived (#33) — no INTERFACE
+        # stamp of its own to raise, so deepening starts at DESIGN directly.
+        states = {1: D.NodeRun(fidelity=None), 2: run_at()}
+        m = D.build_model(states, {(1, 2)})
+        assert D.next_move(states[1], m, 1) == D.DESIGN
+
+    def test_unstamped_leaf_still_takes_the_floor_move(self):
+        states = {1: D.NodeRun(fidelity=None)}
+        m = D.build_model(states, set())
+        assert D.next_move(states[1], m, 1) == D.INTERFACE
+
 
 class TestRoute:
     def test_deepen_advances_cursor_and_gauges(self):
@@ -135,6 +147,30 @@ class TestModelSynth:
         m = D.build_model(states, edges, boundaries={1: [2, 3, 4]})
         cen = ctx_schedule.centrality(m)
         assert cen[2] >= 1 and cen[3] >= 1 and cen[4] >= 1
+
+    def test_unstamped_run_reaches_the_model_as_marker_absence(self):
+        # fidelity=None synthesizes *no* 📊 line — the scheduler must see the
+        # node as unstamped, not as an explicit stub.
+        m = D.build_model({1: D.NodeRun(fidelity=None)}, set())
+        assert ctx_schedule.raw_fidelity(m, 1) is None
+        assert ctx_schedule.declared_fidelity(m, 1) == "stub"   # default intact
+
+
+class TestDerivedFidelityRun:
+    def test_unstamped_parent_folds_correct_without_a_floor_move(self):
+        # end-to-end: the parent carries no stamp; the leaves take the floor
+        # move and deepen, and the parent's derived fidelity folds the tree.
+        states = {1: D.NodeRun(fidelity=None),
+                  2: D.NodeRun(fidelity="stub"), 3: D.NodeRun(fidelity="stub")}
+        edges = {(1, 2), (1, 3)}
+        disp = Script()
+        res = D.run(states, edges, disp, budget=100)
+        assert res.outcome == "folded_correct"
+        assert (2, D.INTERFACE) in disp.calls and (3, D.INTERFACE) in disp.calls
+        # with no stamp the parent has no glue of its own: its fidelity is read
+        # off the children, so once both leaves validate the fold terminates the
+        # run — the parent is never dispatched any move (INTERFACE included).
+        assert all(nd != 1 for nd, _ in disp.calls)
 
 
 class TestReadiness:

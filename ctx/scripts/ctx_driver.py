@@ -58,8 +58,11 @@ class NodeRun:
     `fidelity`/`confidence` are the coarse gauges the scheduler reads; `cursor` is
     where the node sits in its deepen sequence (None = not yet started deepening);
     `done` marks a validated-correct node (auto-skipped thereafter).
+
+    `fidelity=None` means *unstamped* — an internal node whose fidelity is
+    derived from its children on read (#33), not a gauge value of its own.
     """
-    fidelity: str = "stub"
+    fidelity: str | None = "stub"
     confidence: str = "low"
     cursor: str | None = None
     faults: int = 0
@@ -97,7 +100,10 @@ class RunResult:
 
 # --- model synthesis --------------------------------------------------------
 def _synth_body(run: NodeRun, boundaries, aspects) -> str:
-    lines = [f"📊 Fidelity: {run.fidelity}", f"🧭 Confidence: {run.confidence}"]
+    # fidelity=None → no 📊 line: "unstamped" reaches the scheduler as marker
+    # absence, exactly as it would from a real store body (#33 derived rule).
+    lines = ([f"📊 Fidelity: {run.fidelity}"] if run.fidelity is not None else [])
+    lines.append(f"🧭 Confidence: {run.confidence}")
     if boundaries:
         # One comma-separated marker: collate overwrites per-marker, so separate
         # lines would keep only the last target (canonical form is the comma list).
@@ -129,8 +135,15 @@ def build_model(states, edges, boundaries=None, aspects=None) -> ctx_core.Model:
 
 # --- move selection (the state-machine) -------------------------------------
 def next_move(run: NodeRun, model, n) -> str:
-    """The move to run on node `n` given where it is."""
-    if ctx_schedule.FIDELITY_RANK.get(ctx_schedule.declared_fidelity(model, n), 0) \
+    """The move to run on node `n` given where it is.
+
+    A derived-fidelity node (#33: unstamped, with open children) skips the
+    INTERFACE floor move — it has no stamp of its own to raise — and goes
+    straight into the deepen sequence at DESIGN.
+    """
+    if not ctx_schedule.derives_fidelity(model, n) \
+            and ctx_schedule.FIDELITY_RANK.get(
+                ctx_schedule.declared_fidelity(model, n), 0) \
             < ctx_schedule.FIDELITY_RANK[INTERFACE]:
         return INTERFACE
     if run.cursor is None:

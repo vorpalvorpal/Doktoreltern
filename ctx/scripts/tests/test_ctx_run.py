@@ -48,6 +48,19 @@ def store(tmp_path):
     return s, root, leaf
 
 
+@pytest.fixture
+def unstamped_store(tmp_path):
+    """Like `store`, but the parent carries no 📊 marker (#33: derived fidelity)."""
+    s = tmp_path / "store"
+    ctx_store.init_store(s)
+    root = ctx_store.create_node(
+        s, "root", "🧭 Confidence: low\n\nUnstamped epic.\n")
+    leaf = ctx_store.create_node(
+        s, "leaf", "🧭 Confidence: low\n📊 Fidelity: stub\n\nA leaf.\n",
+        parent=root)
+    return s, root, leaf
+
+
 class TestLoadWorld:
     def test_states_and_edges_from_store(self, store):
         s, root, leaf = store
@@ -61,6 +74,19 @@ class TestLoadWorld:
         ctx_store.set_state(s, leaf, "closed", state_reason="not_planned")
         _model, states, _e, _b, _a = ctx_run.load_world(str(s))
         assert leaf not in states and root in states
+
+    def test_unstamped_parent_loads_as_derived_none(self, unstamped_store):
+        s, root, leaf = unstamped_store
+        _model, states, *_ = ctx_run.load_world(str(s))
+        assert states[root].fidelity is None      # derived (#33), not stub-capped
+        assert states[leaf].fidelity == "stub"
+
+    def test_unstamped_leaf_still_defaults_stub(self, tmp_path):
+        s = tmp_path / "store"
+        ctx_store.init_store(s)
+        n = ctx_store.create_node(s, "solo", "🧭 Confidence: low\n\nNo marker.\n")
+        _model, states, *_ = ctx_run.load_world(str(s))
+        assert states[n].fidelity == "stub"
 
 
 class TestRunState:
@@ -81,6 +107,16 @@ class TestRunState:
         s, *_ = store
         d = ctx_run._telemetry_dir(str(s))
         assert (d / ".gitignore").read_text() == "*\n"
+
+    def test_none_fidelity_survives_run_state_roundtrip(self, unstamped_store):
+        # fidelity=None serializes as JSON null; the overlay must restore it as
+        # None (unstamped), not coerce it to a string.
+        s, root, _leaf = unstamped_store
+        _m, states, *_ = ctx_run.load_world(str(s))
+        ctx_run.save_run_state(str(s), states)
+        _m, fresh, *_ = ctx_run.load_world(str(s))
+        ctx_run.load_run_state(str(s), fresh)
+        assert fresh[root].fidelity is None
 
 
 # --- end-to-end with a stub executor -----------------------------------------
@@ -106,6 +142,29 @@ class TestEndToEnd:
         # run-state persisted: both nodes done
         state = json.loads((s / ".telemetry" / "run-state.json").read_text())
         assert state[str(root)]["done"] and state[str(leaf)]["done"]
+
+    def test_unstamped_parent_folds_without_a_floor_move(self, unstamped_store,
+                                                         capsys):
+        # #33 end-to-end: the parent has no 📊 marker, yet the run converges —
+        # and the parent is never dispatched an INTERFACE move (it has no stamp
+        # to raise; the leaf carries the floor).
+        s, root, leaf = unstamped_store
+        rc = ctx_run.main([
+            str(s), "--project", str(s), "--dispatch-cmd",
+            "printf 'DIFFICULTY: 1\\nVERDICT: ok - stub executor\\n'",
+        ])
+        assert rc == 0
+        assert "folded_correct" in capsys.readouterr().out
+
+        lines = [json.loads(x) for x in
+                 (s / ".telemetry" / "usage.jsonl").read_text().splitlines()]
+        root_moves = [rec["move"] for rec in lines if rec["node"] == root]
+        assert "interface" not in root_moves      # no floor move on the parent
+        # stronger: no stamp = no glue of its own — the leaf's `correct` is the
+        # parent's derived fidelity, so the parent needs no dispatches at all.
+        assert root_moves == []
+        leaf_moves = [rec["move"] for rec in lines if rec["node"] == leaf]
+        assert "interface" in leaf_moves          # stamped stub leaf still floors
 
     def test_verdictless_executor_escalates(self, store, capsys):
         s, *_ = store

@@ -86,8 +86,13 @@ def load_world(store: str):
     states = {}
     for n in active:
         g = model.gauges.get(n, {})
+        fidelity = g.get("fidelity")
+        # #33: an unstamped node with open children keeps fidelity=None — the
+        # scheduler derives it on read; an unstamped *leaf* defaults to stub.
+        if fidelity is None and not ctx_schedule.derives_fidelity(model, n):
+            fidelity = "stub"
         states[n] = ctx_driver.NodeRun(
-            fidelity=g.get("fidelity", "stub"),
+            fidelity=fidelity,
             confidence=g.get("confidence", "low"),
         )
     edges = {(p, c) for p, c in model.tree_edges if p in states and c in states}
