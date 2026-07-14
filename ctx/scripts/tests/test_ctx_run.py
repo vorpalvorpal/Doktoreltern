@@ -1,9 +1,13 @@
 """ctx_run — the store-backed runner shell around ctx_driver (MVP)."""
 import json
+import sys
+from pathlib import Path
 
 import pytest
 
+import ctx_driver
 import ctx_run
+import ctx_source
 import ctx_store
 
 
@@ -119,6 +123,123 @@ class TestRunState:
         assert fresh[root].fidelity is None
 
 
+# --- runtime overlay (shared by run-state resume and per-tick refresh) --------
+class TestOverlayRuntime:
+    def test_runtime_wins_for_shared_nodes(self):
+        states = {1: ctx_driver.NodeRun(), 2: ctx_driver.NodeRun()}
+        adv = ctx_driver.NodeRun(fidelity="interface", cursor="plan", faults=1)
+        ctx_run.overlay_runtime(states, {1: adv})
+        assert states[1] is adv                    # driver-owned state wins outright
+        assert states[2].cursor is None            # untouched nodes keep the fresh read
+
+    def test_runtime_entries_absent_from_fresh_states_are_dropped(self):
+        states = {1: ctx_driver.NodeRun()}
+        ctx_run.overlay_runtime(states, {99: ctx_driver.NodeRun(cursor="plan")})
+        assert 99 not in states                    # left the working set → dropped
+
+    def test_load_run_state_drops_departed_nodes(self, store):
+        # load_run_state goes through overlay_runtime: a saved entry for a node
+        # since closed does not resurrect it onto the frontier.
+        s, root, leaf = store
+        _m, states, *_ = ctx_run.load_world(str(s))
+        states[leaf].cursor = "plan"
+        ctx_run.save_run_state(str(s), states)
+        ctx_store.set_state(s, leaf, "closed", state_reason="not_planned")
+        _m, fresh, *_ = ctx_run.load_world(str(s))
+        ctx_run.load_run_state(str(s), fresh)
+        assert leaf not in fresh
+        assert fresh[root].cursor is None
+
+
+# --- per-tick world reload (make_refresh) --------------------------------------
+@pytest.fixture
+def refresh_world(store):
+    """states/source_nodes seeded from `store`, plus the refresh closure."""
+    s, root, leaf = store
+    _m, states, *_ = ctx_run.load_world(str(s))
+    source_nodes = ctx_source.RepoSource(str(s)).nodes
+    refresh = ctx_run.make_refresh(str(s), states, source_nodes)
+    return s, root, leaf, states, source_nodes, refresh
+
+
+class TestMakeRefresh:
+    def test_advanced_node_keeps_runtime_state(self, refresh_world):
+        s, root, leaf, states, _src, refresh = refresh_world
+        states[leaf].fidelity = "interface"
+        states[leaf].cursor = "plan"
+        states[leaf].faults = 1
+        refresh()
+        assert states[leaf].fidelity == "interface"   # runtime won over disk stub
+        assert states[leaf].cursor == "plan"
+        assert states[leaf].faults == 1
+
+    def test_untouched_node_follows_fresh_disk_read(self, store):
+        # An unstamped leaf seeds as `stub` (leaf default). Mid-run it gains a
+        # child on disk: still exactly as seeded, it must follow the fresh read
+        # and flip to derived fidelity (None, the #33 rule) — not stay capped
+        # by the stale leaf default and draw a no-op INTERFACE move.
+        s, root, leaf = store
+        grower = ctx_store.create_node(
+            s, "grower", "🧭 Confidence: low\n\nNo stamp.\n", parent=root)
+        _m, states, *_ = ctx_run.load_world(str(s))
+        assert states[grower].fidelity == "stub"
+        source_nodes = ctx_source.RepoSource(str(s)).nodes
+        refresh = ctx_run.make_refresh(str(s), states, source_nodes)
+
+        kid = ctx_store.create_node(
+            s, "kid", "🧭 Confidence: low\n📊 Fidelity: stub\n\nKid.\n",
+            parent=grower)
+        _states, edges, _b, _a = refresh()
+        assert states[grower].fidelity is None        # derived now, not stub
+        assert kid in states and states[kid].fidelity == "stub"
+        assert (grower, kid) in edges
+
+    def test_seed_baseline_is_disk_not_states(self, store):
+        # A resumed run-state overlay applied to `states` BEFORE make_refresh
+        # is built must still count as driver-owned on the first refresh: the
+        # seed baseline is read from disk inside make_refresh, not from states.
+        s, root, leaf = store
+        _m, states, *_ = ctx_run.load_world(str(s))
+        states[leaf].fidelity = "interface"
+        states[leaf].cursor = "plan"
+        ctx_run.save_run_state(str(s), states)
+
+        _m, states, *_ = ctx_run.load_world(str(s))
+        ctx_run.load_run_state(str(s), states)        # resume overlay first
+        source_nodes = ctx_source.RepoSource(str(s)).nodes
+        refresh = ctx_run.make_refresh(str(s), states, source_nodes)
+        refresh()
+        assert states[leaf].fidelity == "interface"   # not clobbered back to stub
+        assert states[leaf].cursor == "plan"
+
+    def test_refresh_mutates_states_and_source_nodes_in_place(self, refresh_world):
+        s, root, leaf, states, source_nodes, refresh = refresh_world
+        held_states, held_source = states, source_nodes   # what dispatch closes over
+        new = ctx_store.create_node(
+            s, "newcomer", "🧭 Confidence: low\n📊 Fidelity: stub\n\nNew.\n",
+            parent=root)
+        ret_states, _edges, _b, _a = refresh()
+        assert ret_states is held_states              # same dict object, updated
+        assert new in held_states
+        assert new in held_source
+        assert held_source[new]["title"] == "newcomer"
+
+    def test_new_node_seed_does_not_alias_states(self, refresh_world):
+        # The seeds entry for a newly-seen node is a COPY (`replace(run)`):
+        # advancing the node after the refresh must still read as advanced on
+        # the next refresh, not be clobbered back to the disk state.
+        s, root, leaf, states, _src, refresh = refresh_world
+        new = ctx_store.create_node(
+            s, "newcomer", "🧭 Confidence: low\n📊 Fidelity: stub\n\nNew.\n",
+            parent=root)
+        refresh()                                     # newcomer seeded
+        states[new].fidelity = "interface"            # driver advances it
+        states[new].cursor = "design"
+        refresh()
+        assert states[new].fidelity == "interface"    # advanced state survived
+        assert states[new].cursor == "design"
+
+
 # --- end-to-end with a stub executor -----------------------------------------
 class TestEndToEnd:
     def test_all_ok_executor_folds_the_tree(self, store, capsys):
@@ -183,6 +304,36 @@ class TestEndToEnd:
         assert "next: INTERFACE on #" in out
         assert "VERDICT" in out                       # the protocol is in the prompt
         assert not (s / ".telemetry" / "usage.jsonl").exists()
+
+    def test_node_created_by_a_dispatch_is_driven_in_the_same_run(self, store,
+                                                                  tmp_path):
+        # The full loop: the FIRST dispatched move decomposes the tree (writes
+        # a new node into the store), and the per-tick refresh picks it up —
+        # the newcomer is dispatched and driven to correct in the same run.
+        s, root, leaf = store
+        flag = tmp_path / "spawned"
+        spawn_py = tmp_path / "spawn.py"
+        body = "🧭 Confidence: low\n📊 Fidelity: stub\n\nSpawned mid-run.\n"
+        spawn_py.write_text(
+            "import sys\n"
+            f"sys.path.insert(0, {str(Path(ctx_run.__file__).parent)!r})\n"
+            "import ctx_store\n"
+            f"ctx_store.create_node({str(s)!r}, 'spawned', {body!r}, "
+            f"parent={root})\n",
+            encoding="utf-8")
+        cmd = (f"if [ ! -e {flag} ]; then touch {flag}; "
+               f"{sys.executable} {spawn_py}; fi; "
+               "printf 'DIFFICULTY: 1\\nVERDICT: ok - stub executor\\n'")
+
+        rc = ctx_run.main([str(s), "--project", str(s), "--budget", "30",
+                           "--dispatch-cmd", cmd])
+        assert rc == 0                                # folded correct → the
+                                                      # newcomer was completed
+        lines = [json.loads(x) for x in
+                 (s / ".telemetry" / "usage.jsonl").read_text().splitlines()]
+        spawned = leaf + 1                            # next id the store allocates
+        spawned_moves = [rec["move"] for rec in lines if rec["node"] == spawned]
+        assert "interface" in spawned_moves and "validate" in spawned_moves
 
     def test_resume_skips_done_nodes(self, store):
         s, root, leaf = store

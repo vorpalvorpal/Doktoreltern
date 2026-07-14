@@ -273,3 +273,131 @@ class TestTermination:
         res = D.run(states, set(), disp, roots=[1], budget=100)
         assert res.outcome == "folded_correct" and res.ticks == 0
         assert disp.calls == []
+
+
+# --- per-tick world reload (injected refresh) ---------------------------------
+class TestRefresh:
+    def test_refresh_called_at_top_of_every_tick(self):
+        states = {1: run_at()}
+        calls = {"n": 0}
+
+        def refresh():
+            calls["n"] += 1
+            return states, set(), None, None
+
+        disp = Script()
+        res = D.run(states, set(), disp, budget=100, refresh=refresh)
+        assert res.outcome == "folded_correct"
+        # 5 deepen dispatches + the terminal fold-check tick, each preceded
+        # by one refresh call.
+        assert res.ticks == 5
+        assert calls["n"] == res.ticks + 1
+
+    def test_refresh_called_under_budget_trip(self):
+        states = {1: run_at(), 2: run_at()}
+        edges = {(1, 2)}
+        calls = {"n": 0}
+
+        def refresh():
+            calls["n"] += 1
+            return states, edges, None, None
+
+        disp = Script()
+        res = D.run(states, edges, disp, budget=3, refresh=refresh)
+        assert res.outcome == "budget_tripped" and calls["n"] == 3
+
+    def test_driver_rebinds_world_from_refresh_return(self):
+        # The world handed to `run` is a stale snapshot; refresh returns a
+        # different states dict where #1 is already at interface. The driver
+        # must schedule off the refreshed world (DESIGN first, no floor move)
+        # and route mutations into *its* objects, not the stale ones.
+        stale = {1: D.NodeRun(fidelity="stub")}
+        fresh = {1: run_at(fid="interface")}
+        disp = Script()
+        res = D.run(stale, set(), disp, budget=100,
+                    refresh=lambda: (fresh, set(), None, None))
+        assert res.outcome == "folded_correct"
+        assert disp.calls[0] == (1, D.DESIGN)
+        assert (1, D.INTERFACE) not in disp.calls
+        assert fresh[1].done                       # mutations landed in the refreshed world
+        assert stale[1].fidelity == "stub" and not stale[1].done
+
+    def test_node_created_mid_run_is_dispatched_same_run(self):
+        # A dispatched move decomposes #1 during tick 1; refresh surfaces the
+        # new leaf #3 at the top of tick 2 — it joins the frontier and is
+        # driven to correct in the SAME run (the fold waits for it).
+        states = {1: run_at(), 2: run_at()}
+        edges = {(1, 2)}
+        calls = {"n": 0}
+
+        def refresh():
+            calls["n"] += 1
+            if calls["n"] == 2:
+                states[3] = D.NodeRun(fidelity="stub")
+                edges.add((1, 3))
+            return states, edges, None, None
+
+        disp = Script()
+        res = D.run(states, edges, disp, budget=100, refresh=refresh)
+        assert res.outcome == "folded_correct"
+        assert (3, D.INTERFACE) in disp.calls      # floored + deepened mid-run
+        assert states[3].done
+
+    def test_node_arriving_correct_joins_done_and_is_not_dispatched(self):
+        # #3 arrives via refresh already validated `correct` (done by another
+        # run, say). It must join the done set — never drawn a move — even
+        # though its low confidence would give it top raw priority.
+        states = {1: run_at(), 2: run_at()}
+        edges = {(1, 2)}
+        aspects = {2: ["a"]}
+        calls = {"n": 0}
+
+        def refresh():
+            calls["n"] += 1
+            if calls["n"] == 2:
+                states[3] = D.NodeRun(fidelity="correct", confidence="low")
+                edges.add((1, 3))
+                aspects[3] = ["x", "y", "z"]       # would outrank #1 and #2
+            return states, edges, None, aspects
+
+        disp = Script()
+        res = D.run(states, edges, disp, budget=100, refresh=refresh)
+        assert res.outcome == "folded_correct"
+        assert all(nd != 3 for nd, _ in disp.calls)
+
+    def test_roots_stay_as_derived_at_run_start(self):
+        # A new top-level root appearing mid-run does not join the termination
+        # condition: the run folds on the run-start roots even though #9 is
+        # nowhere near correct.
+        states = {1: run_at()}
+        edges = set()
+        calls = {"n": 0}
+
+        def refresh():
+            calls["n"] += 1
+            if calls["n"] == 2:
+                states[9] = run_at(fid="interface")   # parentless: a new root
+            return states, edges, None, None
+
+        disp = Script()
+        res = D.run(states, edges, disp, budget=100, refresh=refresh)
+        assert res.outcome == "folded_correct"
+        assert not states[9].done                  # never driven to correct
+        assert all(nd != 9 for nd, _ in disp.calls)
+
+    def test_identity_refresh_equivalent_to_no_refresh(self):
+        def world():
+            states = {1: run_at(), 2: run_at(), 3: run_at()}
+            return states, {(1, 2), (1, 3)}, {2: ["a"], 3: ["b"]}
+
+        s1, e1, a1 = world()
+        d1 = Script()
+        r1 = D.run(s1, e1, d1, aspects=a1, budget=100)
+
+        s2, e2, a2 = world()
+        d2 = Script()
+        r2 = D.run(s2, e2, d2, aspects=a2, budget=100,
+                   refresh=lambda: (s2, e2, None, a2))
+        assert r1.outcome == r2.outcome == "folded_correct"
+        assert r1.ticks == r2.ticks
+        assert d1.calls == d2.calls                # identical trajectories
