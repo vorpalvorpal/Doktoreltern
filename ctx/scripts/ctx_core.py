@@ -179,6 +179,17 @@ KEYED: dict = {
     CON:         ("c",   "standing", frozenset({"standing", "refuted", "moot"})),
 }
 
+# Single-value markers: canonically ONE line per node. collate folds these
+# latest-wins (CONFIDENCE/FIDELITY/SEAL gauges) or bare-overwrites
+# (BOUNDARY/BLOCKED_BY/DESIGN — `model.X[node] = value`), so a second occurrence
+# in one text is silently resolved to the last, dropping the first: the F4b
+# silent-drop (store #24.q1). Everything not listed here is repeatable without
+# loss — KEYED kinds fold per-id, and ASPECT/EQ/CITES union across occurrences —
+# so they are exempt from the repeat guard in parse().
+SINGLE_VALUE: frozenset = frozenset({
+    BOUNDARY, BLOCKED_BY, DESIGN, CONFIDENCE, FIDELITY, SEAL,
+})
+
 _WS_SPLIT = re.compile(r"^(\S+)\s*(.*)$", re.DOTALL)
 
 # A disciplined, optional version tag — only Future (expansion) markers may carry one.
@@ -531,6 +542,9 @@ def parse(text: str) -> Parsed:
     - Empty inline value on a Dead-end line ⇒ block form: value is
       immediately-following ``>`` lines.
     - A glyph+keyword match with an unparseable value ⇒ Finding, no Marker.
+    - A single-value marker (see ``SINGLE_VALUE``) that appears more than once in
+      one text ⇒ Finding on each repeat: collate folds these one-per-node and
+      would silently keep only the last (F4b silent-drop, store #24.q1).
     """
     text = _normalise_text(text)
     lines = text.splitlines(keepends=False)
@@ -618,6 +632,27 @@ def parse(text: str) -> Parsed:
                     line=lineno,
                 ))
             i += 1
+
+    # Repeated single-value marker (F4b / store #24.q1): these kinds are
+    # canonically one line per node, and collate folds them last-wins — so a
+    # duplicate in one text is silently dropped rather than merged. Flag each
+    # repeat here (same family as the glyph-led drift guard above) so the drop is
+    # never silent. A legitimate cross-comment update is a *separate* parse()
+    # call and so never sees a repeat; only accidental in-text duplication trips.
+    first_line: dict = {}
+    for mk in markers:
+        if mk.kind not in SINGLE_VALUE:
+            continue
+        if mk.kind in first_line:
+            findings.append(Finding(
+                0, "parse",
+                f"single-value marker {_KIND_TO_KW[mk.kind]!r} repeated (first at "
+                f"line {first_line[mk.kind]}); canonical form is one line — collate "
+                f"would silently keep only the last",
+                line=mk.line,
+            ))
+        else:
+            first_line[mk.kind] = mk.line
 
     return Parsed(markers=markers, findings=findings)
 
