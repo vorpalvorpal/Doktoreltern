@@ -16,6 +16,7 @@ The core idea is simple. Most projects fail not because the implementation was b
 That is the role this system plays, and it is how the plugins are meant to work: each one is an advisor with a speciality, and together they form your committee.
 
 - **r-science** keeps you honest about the maths, the statistics and the methods — correctness before cleverness, claims backed by references, reproducible by default.
+- **r-data** keeps you honest about the data — the same workflow spine, adapted for automated ingestion and tidying: contracts validated at every boundary, every row accounted for, idempotent and reproducible from raw.
 - Other advisors can join the committee for the parts of a project they know best — visualisation, dashboards, reporting — each bringing its own standards.
 
 The advisors stack rather than compete: a project can sit under several at once, with the most specialised one taking the lead for whatever part of the work is in front of you. You stay the candidate; they steer.
@@ -30,7 +31,7 @@ The advisors stack rather than compete: a project can sit under several at once,
 
 ## Status
 
-Doktoreltern is under active development. The methodology layer described above is being built on top of the existing **r-science** skills — the workflow spine (conventions, whiteboard → plan → tests → implement → verify → benchmark/optimise → review) plus R OOP and Bayesian knowledge. Expect things to move.
+Doktoreltern is under active development. The methodology layer described above is being built on top of the existing skills — the workflow spine (conventions, whiteboard → plan → tests → implement → verify → benchmark/optimise → review) in two variants, **r-science** (plus R OOP and Bayesian knowledge) and **r-data**. Expect things to move.
 
 ## Installation
 
@@ -39,10 +40,11 @@ Doktoreltern installs as a Claude Code plugin. The r-science advisor depends on 
 ```
 /plugin marketplace add posit-dev/skills
 /plugin marketplace add vorpalvorpal/Doktoreltern
-/plugin install r-science@doktoreltern
+/plugin install r-science@doktoreltern   # science-centered R packages
+/plugin install r-data@doktoreltern      # data ingestion/tidying projects
 ```
 
-Installing `r-science` pulls in the upstream plugins it depends on (general developer, GitHub, r-lib, and publishing skills). To install one of those on its own instead, use `/plugin install <name>@posit-dev-skills`.
+Installing an advisor pulls in the upstream plugins it depends on (general developer, GitHub, r-lib, and — for r-science — publishing skills). To install one of those on its own instead, use `/plugin install <name>@posit-dev-skills`.
 
 For customisation or offline use, clone the repository and copy individual skills into your Claude Code skills directory:
 

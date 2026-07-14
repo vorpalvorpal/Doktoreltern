@@ -41,6 +41,31 @@
       ]
     },
     {
+      "name": "r-data",
+      "description": "Data-engineering R projects: automated ingestion, tidying, and pipelines. The same workflow spine as r-science (whiteboard -> plan -> tests -> implement -> verify -> benchmark/optimise -> review), adapted so the product is datasets someone else can trust — contract-validated at every boundary, idempotent, reproducible from raw. Depends on the upstream Posit plugins for general developer, GitHub, and r-lib skills.",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./r-data/conventions",
+        "./r-data/whiteboard",
+        "./r-data/plan",
+        "./r-data/tests",
+        "./r-data/implement",
+        "./r-data/verify",
+        "./r-data/benchmark-optimise",
+        "./r-data/review",
+        "./r-science/r-oop",
+        "./ctx/commands/gc-artefacts",
+        "./ctx/commands/seal",
+        "./ctx/commands/unseal"
+      ],
+      "dependencies": [
+        { "name": "posit-dev", "marketplace": "posit-dev-skills" },
+        { "name": "github", "marketplace": "posit-dev-skills" },
+        { "name": "r-lib", "marketplace": "posit-dev-skills" }
+      ]
+    },
+    {
       "name": "docloop",
       "description": "Skills invoked live from inside a docloop review comment (a slash command typed while composing, resolved synchronously via the Claude Agent SDK — see docloop/skills/README.md). Narrow, self-contained, text-in/text-out only — no filesystem/Bash access, no mode changes.",
       "source": "./",
