@@ -287,8 +287,14 @@ class TestFsChecksIntegration:
     def test_c1_10_real_store_lints_zero(self):
         # The integration check: the FS pass must not false-positive against
         # the live v1 design store (still all node.md, no components yet).
+        # The store is its own nested git repo at the outer-repo root; derive
+        # its path from this file rather than hardcoding, and skip cleanly if a
+        # checkout doesn't carry it (it is a separate repo).
         ctx_lint = pytest.importorskip("ctx_lint")
-        assert ctx_lint.main([str(Path("/Users/rjs/Documents/skills/store"))]) == 0
+        real_store = Path(__file__).resolve().parents[3] / "store"
+        if not (real_store / ".git").is_dir():
+            pytest.skip("real design store not present in this checkout")
+        assert ctx_lint.main([str(real_store)]) == 0
 
     def test_c1_10_synthetic_clean_v2_fixture_lints_zero(self, fs_store):
         ctx_lint = pytest.importorskip("ctx_lint")
