@@ -386,3 +386,26 @@ def set_state(store, node_id: int, state: str, *, state_reason=None, labels=None
         state_reason=state_reason, labels=new_labels, body=body,
     )
     _commit(store_path, f"node #{node_id}: state {state}")
+
+
+if __name__ == "__main__":  # pragma: no cover - thin CLI over the library
+    import argparse
+
+    _p = argparse.ArgumentParser(
+        description="ctx node store CLI (per-project bootstrap)")
+    _sub = _p.add_subparsers(dest="cmd", required=True)
+    _i = _sub.add_parser("init", help="create an empty store (idempotent)")
+    _i.add_argument("store", help="path to the store directory")
+    _r = _sub.add_parser(
+        "create-root", help="create a root node in an existing store")
+    _r.add_argument("store", help="path to the store directory")
+    _r.add_argument("title", help="root node title")
+    _r.add_argument("--body", default="**Stub.** Root epic.",
+                    help="root node body (markdown)")
+    _args = _p.parse_args()
+    if _args.cmd == "init":
+        init_store(_args.store)
+        print(f"store ready: {_args.store}")
+    elif _args.cmd == "create-root":
+        _nid = create_node(_args.store, _args.title, _args.body)
+        print(f"created root node #{_nid}")
