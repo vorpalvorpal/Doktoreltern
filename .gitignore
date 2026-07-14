@@ -115,5 +115,7 @@ yarn-error.log
 package-lock.json
 yarn.lock
 
-# Walking-skeleton dogfood (its own git repo; local-only like the ctx store)
-docloop/dogfood/
+# Walking-skeleton dogfood — RETIRED 2026-07-14, archived to archive/dogfood/
+# (its own git repo; kept local-only and gitignored so its content stays out of
+# the outer repo). Not part of the active workflow. See archive/dogfood/ARCHIVED.md.
+archive/dogfood/
