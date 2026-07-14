@@ -8,6 +8,8 @@ Priority = **centrality × (1 − confidence)** (#32; q1 settled there is no sep
 fidelity-debt term — the walking-skeleton floor already gates on fidelity):
 
 - **fidelity** folds min over non-dormant child nodes (#33.q1); leaves = own.
+  An unstamped node with open children has no fidelity of its own (#33): it
+  derives the children's fold and is exempt from the interface floor.
 - **confidence** is a coarse ordinal: from resolved q/v when the node has any
   (``confidence_inputs``), else the declared ``🧭`` marker, else ``low``.
 - **centrality** is graph-derived and never hand-set: subtree size (how much rests
@@ -53,12 +55,40 @@ def _active(model, n):
 
 
 # --- fidelity ---------------------------------------------------------------
+def raw_fidelity(model, n):
+    """The explicitly declared `📊 Fidelity:` value, or None when unstamped.
+
+    Distinct from `declared_fidelity` (which defaults to `stub`): the #33 rule
+    needs to tell "no marker" apart from an explicit `stub` stamp.
+    """
+    return model.gauges.get(n, {}).get("fidelity")
+
+
 def declared_fidelity(model, n):
     return model.gauges.get(n, {}).get("fidelity", _DEFAULT_FIDELITY)
 
 
+def derives_fidelity(model, n, kids=None):
+    """#33 rule: an unstamped node with open, non-dormant children has no
+    fidelity of its own — it derives min over its children on read. A stamped
+    node keeps its stamp in the fold (own glue); an unstamped leaf is a `stub`.
+    """
+    if raw_fidelity(model, n) is not None:
+        return False
+    if kids is None:
+        kids = _children(model)
+    return any(c in model.nodes and model.nodes[c].state == "open"
+               and c not in model.dormant for c in kids.get(n, []))
+
+
 def effective_fidelity(model):
-    """Folded fidelity label per node: min(own, non-dormant children). Leaves = own."""
+    """Folded fidelity label per node: min(own, non-dormant children).
+
+    A derived-fidelity node (#33: unstamped, with open children) contributes no
+    own rank — its fold is the children alone, so an unstamped parent over
+    all-`correct` children reads `correct` instead of being capped at the
+    `stub` default forever. Unstamped leaves = `stub`; stamped nodes = as ever.
+    """
     kids = _children(model)
     memo = {}
 
@@ -68,10 +98,12 @@ def effective_fidelity(model):
         own = FIDELITY_RANK.get(declared_fidelity(model, n), 0)
         if n in seen:                       # cycle guard
             return own
-        best = own
-        for c in kids.get(n, []):
-            if _active(model, c):
-                best = min(best, fold(c, seen | {n}))
+        child_ranks = [fold(c, seen | {n}) for c in kids.get(n, [])
+                       if _active(model, c)]
+        if derives_fidelity(model, n, kids):
+            best = min(child_ranks)         # non-empty: open children exist
+        else:
+            best = min([own] + child_ranks)
         memo[n] = best
         return best
 
@@ -173,9 +205,14 @@ def _depth(model):
 
 
 def floor_met(model):
-    """Walking-skeleton floor: every frontier node is at least `interface`."""
+    """Walking-skeleton floor: every frontier node is at least `interface`.
+
+    Derived-fidelity nodes (#33: unstamped, with open children) are exempt —
+    they have no stamp of their own to raise; their children carry the floor.
+    """
+    kids = _children(model)
     return all(FIDELITY_RANK.get(declared_fidelity(model, n), 0) >= _INTERFACE
-               for n in frontier(model))
+               for n in frontier(model) if not derives_fidelity(model, n, kids))
 
 
 def deepen_ready(model, n, eff=None):
@@ -209,8 +246,12 @@ def next_node(model, *, pins=(), skips=()):
     prio = priority(model)
     if not floor_met(model):
         depth = _depth(model)
+        kids = _children(model)
+        # Derived-fidelity nodes are never floor targets (#33): there is no
+        # stamp to raise on them, so an INTERFACE move there would be a no-op.
         unmet = [n for n in pool
-                 if FIDELITY_RANK.get(declared_fidelity(model, n), 0) < _INTERFACE]
+                 if not derives_fidelity(model, n, kids)
+                 and FIDELITY_RANK.get(declared_fidelity(model, n), 0) < _INTERFACE]
         if unmet:
             return min(unmet, key=lambda n: (depth[n], -prio.get(n, 0.0), n))
     # Deepen phase: prefer ready nodes (children correct); fall back to the whole
