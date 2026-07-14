@@ -191,6 +191,61 @@ describe('dl commit — guards (C2)', () => {
     expect(await status(ws)).toBe(stBefore); // index untouched by the attempt
   });
 
+  it('commits a nested doc — the turn-record docs map is keyed by the full path', async () => {
+    ws = await makeRepo();
+    await writeDoc(ws, 'doc.md', CANON);
+    await writeDoc(ws, 'nodes/16/design.md', CANON);
+    await commit(ws, 'turn (rjs): seed', { author: RJS_AUTHOR });
+    const before = await headCount(ws);
+
+    const edit = await runDl(ws, ['edit', `nodes/16/design.md@${refOf(CANON)}`], '@@ replace 3\nnested edit\n');
+    expect(edit.code).toBe(0);
+
+    const c = await runDl(ws, ['commit', '-m', 'turn: nested edit']);
+    expect(c.code).toBe(0);
+    expect(await headCount(ws)).toBe(before + 1);
+
+    const rec = parseTurnRecord(await bodyOf(ws, 'HEAD'));
+    expect(Object.keys(rec.docs)).toEqual(['nodes/16/design.md']);
+    // The nested edit actually landed in HEAD (presentDocFiles staged it).
+    expect(await status(ws)).toBe('');
+    expect(await readDoc(ws, 'nodes/16/design.md')).toContain('nested edit');
+  }, 15000);
+
+  it('foreign-edit guard covers nested docs, naming the full path', async () => {
+    ws = await makeRepo();
+    await writeDoc(ws, 'doc.md', CANON);
+    await writeDoc(ws, 'nodes/16/design.md', CANON);
+    await commit(ws, 'turn (rjs): seed', { author: RJS_AUTHOR });
+    await runDl(ws, ['edit', `doc.md@${refOf(CANON)}`], '@@ replace 3\nmodel edit\n');
+    const before = await headCount(ws);
+
+    // A human clobbers the NESTED doc after dl's write this turn.
+    await writeDoc(ws, 'nodes/16/design.md', '# Doc\n\nhuman clobbered the nested doc\n');
+
+    const c = await runDl(ws, ['commit', '-m', 'should refuse']);
+    expect(c.code).toBe(1);
+    expect(c.stderr).toContain('nodes/16/design.md');
+    expect(await headCount(ws)).toBe(before); // nothing committed
+  }, 15000);
+
+  it('archive/ and threads-adjacent files are outside the walk: a hand edit under archive/ neither trips the guard nor gets staged', async () => {
+    ws = await makeRepo();
+    await writeDoc(ws, 'doc.md', CANON);
+    await writeDoc(ws, 'archive/parked.md', 'drained\n');
+    await commit(ws, 'turn (rjs): seed', { author: RJS_AUTHOR });
+    await runDl(ws, ['edit', `doc.md@${refOf(CANON)}`], '@@ replace 3\nmodel edit\n');
+
+    // A hand edit to a parked doc mid-turn — foreign to dl, but outside the loop.
+    await writeDoc(ws, 'archive/parked.md', 'hand-edited while parked\n');
+
+    const c = await runDl(ws, ['commit', '-m', 'turn: archive is invisible']);
+    expect(c.code).toBe(0);
+    // The archive edit is still sitting in the working tree, unstaged.
+    expect(await status(ws)).toMatch(/archive\/parked\.md/);
+    expect(await readDoc(ws, 'archive/parked.md')).toBe('hand-edited while parked\n');
+  }, 15000);
+
   it('never stages turn.xml and turn.xml never blocks the commit', async () => {
     ws = await makeRepo();
     await writeDoc(ws, 'doc.md', CANON);

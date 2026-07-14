@@ -161,6 +161,55 @@ describe('dl resolve (C3)', () => {
   });
 });
 
+describe('nested docs (path-qualified ids) through the thread verbs', () => {
+  it('comment → reply → resolve on a nested doc: the store is written and ownership carries the full path throughout', async () => {
+    ws = await makeRepo();
+    await writeDoc(ws, 'doc.md', '# Doc\n\nnothing to see here.\n');
+    await writeDoc(ws, 'nodes/16/design.md', '# Design\n\na commentable phrase here.\n');
+    await commit(ws, 'seed');
+
+    // comment: anchors the span in the nested doc, opens the thread in the
+    // top-level threads/ store, and reports the path-qualified doc id.
+    const c = await runDl(ws, ['comment', 'commentable phrase', '--doc', 'nodes/16/design.md'], 'why?');
+    expect(c.code).toBe(0);
+    expect(c.stdout).toMatch(/t1\s*(?:→|->)\s*nodes\/16\/design\.md@[0-9a-f]{8}/);
+    expect(await readDoc(ws, 'nodes/16/design.md')).toContain(':mark[commentable phrase]{#t1}');
+    expect(await exists(join(ws, 'threads', 't1', '0001.md'))).toBe(true);
+    // The journal keys the doc write by its full path (thread ownership for
+    // the foreign-edit guard and the eventual turn record).
+    const afterComment = readScratch(ws);
+    expect(Object.keys(afterComment!.writes)).toContain('nodes/16/design.md');
+    expect(Object.keys(afterComment!.writes)).toContain('threads/t1/0001.md');
+
+    // reply: doc inferred from the anchor — names the nested path.
+    const r = await runDl(ws, ['reply', 't1'], 'a reply');
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain('nodes/16/design.md');
+    const t = await listThreads(join(ws, 'threads'));
+    expect(t.find((x) => x.id === 't1')!.comments.map((x) => x.body)).toEqual(['why?', 'a reply']);
+
+    // resolve: unwraps the anchor in the nested doc, marks the thread in place.
+    const res = await runDl(ws, ['resolve', 't1', '--note', 'done']);
+    expect(res.code).toBe(0);
+    expect(res.stdout).toMatch(/t1 resolved \(nodes\/16\/design\.md@[0-9a-f]{8}\)/);
+    expect(await readDoc(ws, 'nodes/16/design.md')).not.toContain('{#t1}');
+    expect(await exists(join(ws, 'threads', 't1', 'resolved.md'))).toBe(true);
+  }, 20000);
+
+  it('comment refuses a non-doc path (threads/, archive/, traversal), writing nothing', async () => {
+    ws = await makeRepo();
+    await writeDoc(ws, 'doc.md', '# Doc\n\na commentable phrase here.\n');
+    await commit(ws, 'seed');
+
+    for (const doc of ['threads/t1/0001.md', 'archive/x.md', '../evil.md']) {
+      const r = await runDl(ws, ['comment', 'commentable phrase', '--doc', doc], 'x');
+      expect(r.code).toBe(1);
+      expect(r.stderr).toMatch(/not a reviewable doc path/);
+    }
+    expect(await listThreads(join(ws, 'threads'))).toEqual([]);
+  }, 20000);
+});
+
 describe('verbs keep docs canonical + journalled (C3)', () => {
   it('after a comment, the modified doc is canonical and the journal records its new hash', async () => {
     ws = await makeRepo();
