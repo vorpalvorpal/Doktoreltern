@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "docloop",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd docloop && DOCLOOP_DOC=plan.md npm run dev"],
+      "port": 5173
+    },
+    {
+      "name": "docloop-verify",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd docloop && DOCLOOP_DOC=plan.md npm run dev -- --port 5199 --strictPort"],
+      "port": 5199
+    }
+  ]
+}
