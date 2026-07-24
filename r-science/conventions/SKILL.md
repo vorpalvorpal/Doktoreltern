@@ -69,6 +69,12 @@ In package code, take an explicit `seed`/RNG argument rather than calling
 `set.seed()` as a side effect on the user's global stream. In tests and
 examples, seed locally (`withr::local_seed()`).
 
+A seed alone doesn't reproduce a result — pin the **computational environment**
+too: use **`renv`** to snapshot/restore package versions, and record the R
+version. Where results are quoted (vignettes, reports, papers), capture
+`sessionInfo()`. Keep this proportionate — do it for anything whose numbers
+you'd publish or cite, not for throwaway scripts.
+
 ## Data
 
 Choose the format by **shape and size**:

@@ -26,6 +26,7 @@
         "./r-science/review",
         "./r-science/r-oop",
         "./r-science/r-bayes",
+        "./r-science/frictionless",
         "./ctx/commands/gc-artefacts",
         "./ctx/commands/seal",
         "./ctx/commands/unseal"

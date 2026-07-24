@@ -134,7 +134,10 @@ spec via the `tests` skill — don't chase a number with trivial tests.
 ```
 
 Failure case lists each blocking issue by gate, then `Verdict: NOT READY`.
-Fix all blockers and re-run. For a deeper pass against the plan (divergences,
+Fix all blockers and re-run. When a gate fails and the cause isn't obvious,
+debug systematically (root cause before fix; after 3 strikes, rethink the
+approach — superpowers' `systematic-debugging`). For a deeper pass against the
+plan (divergences,
 design, scientific soundness), hand off to the `review` skill — `verify` is the
 gate, `review` is the judgement.
 

@@ -95,6 +95,13 @@ expected values is your job, not the plan's:
   })
   ```
 
+  When the oracle is a whole **reference dataset** rather than a couple of
+  inline numbers, store it under `tests/testthat/fixtures/` in a documented
+  format (see the `conventions` data tiers), and record its **provenance**
+  beside it — source, paper/DOI/standard, and version (a Frictionless
+  `datapackage.json` does this cleanly for CSV/Parquet). A known-answer test is
+  only as trustworthy as the provenance of its known answer.
+
 - **Round-trip** — `expect_equal(decode(encode(x)), x)`.
 
 - **Property-based** — generate inputs and assert the property holds. Set a
