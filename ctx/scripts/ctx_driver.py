@@ -11,8 +11,10 @@ scheduler's job — the part a human was doing by hand:
 
 No network, no LLM. The *content* of a move — writing code, judging correctness — is an
 **injected `dispatch` callable**, so unit tests drive the loop with scripted verdicts and
-a real run drives it with sub-agent moves. The autonomy this module owns is precisely the
-scheduling/routing judgement, not the move content.
+a real run drives it with sub-agent moves. World reload is likewise injected (`refresh`,
+optional): the driver stays pure while a store-backed shell re-collates per tick. The
+autonomy this module owns is precisely the scheduling/routing judgement, not the move
+content.
 
 Two things this build made explicit that the bare `next_node` priority hid:
 
@@ -58,8 +60,11 @@ class NodeRun:
     `fidelity`/`confidence` are the coarse gauges the scheduler reads; `cursor` is
     where the node sits in its deepen sequence (None = not yet started deepening);
     `done` marks a validated-correct node (auto-skipped thereafter).
+
+    `fidelity=None` means *unstamped* — an internal node whose fidelity is
+    derived from its children on read (#33), not a gauge value of its own.
     """
-    fidelity: str = "stub"
+    fidelity: str | None = "stub"
     confidence: str = "low"
     cursor: str | None = None
     faults: int = 0
@@ -97,7 +102,10 @@ class RunResult:
 
 # --- model synthesis --------------------------------------------------------
 def _synth_body(run: NodeRun, boundaries, aspects) -> str:
-    lines = [f"📊 Fidelity: {run.fidelity}", f"🧭 Confidence: {run.confidence}"]
+    # fidelity=None → no 📊 line: "unstamped" reaches the scheduler as marker
+    # absence, exactly as it would from a real store body (#33 derived rule).
+    lines = ([f"📊 Fidelity: {run.fidelity}"] if run.fidelity is not None else [])
+    lines.append(f"🧭 Confidence: {run.confidence}")
     if boundaries:
         # One comma-separated marker: collate overwrites per-marker, so separate
         # lines would keep only the last target (canonical form is the comma list).
@@ -129,8 +137,15 @@ def build_model(states, edges, boundaries=None, aspects=None) -> ctx_core.Model:
 
 # --- move selection (the state-machine) -------------------------------------
 def next_move(run: NodeRun, model, n) -> str:
-    """The move to run on node `n` given where it is."""
-    if ctx_schedule.FIDELITY_RANK.get(ctx_schedule.declared_fidelity(model, n), 0) \
+    """The move to run on node `n` given where it is.
+
+    A derived-fidelity node (#33: unstamped, with open children) skips the
+    INTERFACE floor move — it has no stamp of its own to raise — and goes
+    straight into the deepen sequence at DESIGN.
+    """
+    if not ctx_schedule.derives_fidelity(model, n) \
+            and ctx_schedule.FIDELITY_RANK.get(
+                ctx_schedule.declared_fidelity(model, n), 0) \
             < ctx_schedule.FIDELITY_RANK[INTERFACE]:
         return INTERFACE
     if run.cursor is None:
@@ -190,10 +205,18 @@ def route(run: NodeRun, move: str, verdict: Verdict) -> None:
 
 # --- the loop ---------------------------------------------------------------
 def run(states, edges, dispatch, *, roots=None, boundaries=None, aspects=None,
-        budget=100, fault_cap=3, pins=(), skips=(), focus=True) -> RunResult:
+        budget=100, fault_cap=3, pins=(), skips=(), focus=True,
+        refresh=None) -> RunResult:
     """Drive the tree to `correct`, or stop with a reason.
 
     `dispatch(decision, model) -> Verdict` is the injected move executor.
+    `refresh() -> (states, edges, boundaries, aspects)`, when given, is called
+    at the top of every tick and the driver rebinds its world from the result —
+    so nodes created mid-run by dispatched moves (a PLAN decomposition, say)
+    join the frontier in the *same* run; nodes arriving already `correct` join
+    the done set, mirroring the seeding below. Like `dispatch` it is injected
+    I/O: the driver stays pure. Roots stay as derived at run start — new
+    top-level roots appearing mid-run are out of scope.
     Returns a `RunResult` with the full trajectory for inspection.
     """
     if roots is None:
@@ -204,6 +227,9 @@ def run(states, edges, dispatch, *, roots=None, boundaries=None, aspects=None,
     done = {n for n, r in states.items() if r.done or r.fidelity == "correct"}
     trajectory = []
     for tick in range(1, budget + 1):
+        if refresh is not None:
+            states, edges, boundaries, aspects = refresh()
+            done |= {n for n, r in states.items() if r.done or r.fidelity == "correct"}
         model = build_model(states, edges, boundaries, aspects)
         eff = ctx_schedule.effective_fidelity(model)
         if all(eff.get(r) == "correct" for r in roots):

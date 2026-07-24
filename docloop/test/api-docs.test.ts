@@ -85,18 +85,50 @@ describe('GET /docs', () => {
     ]);
   });
 
-  it('never lists turn.xml or nested markdown', async () => {
+  it('lists nested markdown (path-qualified ids); never turn.xml, threads/, or dot-paths', async () => {
     // A commit writes turn.xml into the working tree as a side effect.
     await fetch(`${base}/commit`, { method: 'POST', body: 'hello' });
-    // Commit a nested md via git directly (the API never writes nested paths).
+    // A nested doc committed via git directly is a doc like any other.
     await mkdir(join(workspace, 'sub'), { recursive: true });
     await writeFile(join(workspace, 'sub', 'inner.md'), 'nested\n', 'utf8');
     await git('add', 'sub/inner.md');
     await git('commit', '-q', '-m', 'nested doc');
+    // The sidecar store and dot-paths stay outside the loop (tracked or not).
+    await mkdir(join(workspace, 'threads', 't1'), { recursive: true });
+    await writeFile(join(workspace, 'threads', 't1', '0001.md'), '---\nauthor: rjs\n---\nq', 'utf8');
+    await writeFile(join(workspace, '.hidden.md'), 'dot\n', 'utf8');
+    await mkdir(join(workspace, 'sub', '.cache'), { recursive: true });
+    await writeFile(join(workspace, 'sub', '.cache', 'x.md'), 'dot dir\n', 'utf8');
 
     const body = await (await fetch(`${base}/docs`)).json();
     const names = body.docs.map((d: { name: string }) => d.name);
-    expect(names).toEqual(['doc.md']);
+    expect(names).toEqual(['doc.md', 'sub/inner.md']);
+  });
+
+  it('lists nested docs recursively with per-doc state (union of tracked + working tree)', async () => {
+    // nodes/16/design.md: committed, then a differing draft saved → draft.
+    await fetch(`${base}/commit?doc=${encodeURIComponent('nodes/16/design.md')}`, {
+      method: 'POST',
+      body: 'design v1',
+    });
+    await fetch(`${base}/save-draft?doc=${encodeURIComponent('nodes/16/design.md')}`, {
+      method: 'POST',
+      body: 'design v2 draft',
+    });
+    // nodes/17/notes.md: only ever saved, never committed → untracked.
+    await fetch(`${base}/save-draft?doc=${encodeURIComponent('nodes/17/notes.md')}`, {
+      method: 'POST',
+      body: 'scratch',
+    });
+    // doc.md: committed, then untouched → clean.
+    await fetch(`${base}/commit`, { method: 'POST', body: 'default doc' });
+
+    const body = await (await fetch(`${base}/docs`)).json();
+    expect(body.docs).toEqual([
+      { name: 'doc.md', state: 'clean' },
+      { name: 'nodes/16/design.md', state: 'draft' },
+      { name: 'nodes/17/notes.md', state: 'untracked' },
+    ]);
   });
 
   it('never lists parked docs under workspace/archive/ (tracked or not)', async () => {
@@ -160,7 +192,21 @@ describe('?doc= parameter', () => {
     expect(body.current).toBe(await canonicalize('default content'));
   });
 
-  const unsafe = ['../evil.md', 'a/b.md', '.hidden.md', 'turn.xml', ''];
+  // Path-qualified ids are legal, but only doc paths (the docs.ts discovery
+  // rule): traversal (empty/dot segments), dot-paths, backslashes, the
+  // excluded roots (threads/, archive/), and non-.md are all refused.
+  const unsafe = [
+    '../evil.md',
+    'a/../b.md',
+    '.hidden.md',
+    '.git/x.md',
+    'a/.b/c.md',
+    'threads/t1/0001.md',
+    'archive/x.md',
+    'a\\b.md',
+    'turn.xml',
+    '',
+  ];
   for (const name of unsafe) {
     const q = `?doc=${encodeURIComponent(name)}`;
     it(`rejects unsafe name ${JSON.stringify(name)} on all three endpoints, writing nothing`, async () => {
@@ -182,6 +228,34 @@ describe('?doc= parameter', () => {
       expect(docs).toEqual([]);
     });
   }
+
+  it('?doc=nodes/16/design.md works on all three endpoints, creating parent dirs on first commit', async () => {
+    const q = `?doc=${encodeURIComponent('nodes/16/design.md')}`;
+    // First commit of a nested doc whose parent directory does not exist yet
+    // (the mkdir path in api.ts).
+    const commitRes = await fetch(`${base}/commit${q}`, { method: 'POST', body: 'nested v1' });
+    expect(commitRes.status).toBe(200);
+    expect((await commitRes.json()).committed).toBe(true);
+
+    const doc = await (await fetch(`${base}/doc${q}`)).json();
+    expect(doc.present).toBe(true);
+    expect(doc.name).toBe('nodes/16/design.md');
+    expect(doc.current).toBe(await canonicalize('nested v1'));
+
+    const draftRes = await fetch(`${base}/save-draft${q}`, { method: 'POST', body: 'nested v2 draft' });
+    expect(draftRes.status).toBe(200);
+    expect(await readFile(join(workspace, 'nodes', '16', 'design.md'), 'utf8')).toBe(
+      await canonicalize('nested v2 draft'),
+    );
+
+    // save-draft to a second never-seen nested path also creates its dirs.
+    const q2 = `?doc=${encodeURIComponent('nodes/17/notes.md')}`;
+    const draft2 = await fetch(`${base}/save-draft${q2}`, { method: 'POST', body: 'fresh draft' });
+    expect(draft2.status).toBe(200);
+    expect(await readFile(join(workspace, 'nodes', '17', 'notes.md'), 'utf8')).toBe(
+      await canonicalize('fresh draft'),
+    );
+  });
 });
 
 describe('GET /nodes', () => {

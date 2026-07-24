@@ -26,9 +26,9 @@
         "./r-science/review",
         "./r-science/r-oop",
         "./r-science/r-bayes",
-        "./r-science/context/commands/gc-artefacts",
-        "./r-science/context/commands/seal",
-        "./r-science/context/commands/unseal"
+        "./ctx/commands/gc-artefacts",
+        "./ctx/commands/seal",
+        "./ctx/commands/unseal"
       ],
       "dependencies": [
         { "name": "posit-dev", "marketplace": "posit-dev-skills" },
@@ -38,6 +38,31 @@
         { "name": "ggsql", "marketplace": "posit-dev-skills" },
         { "name": "shiny", "marketplace": "posit-dev-skills" },
         { "name": "quarto", "marketplace": "posit-dev-skills" }
+      ]
+    },
+    {
+      "name": "r-data",
+      "description": "Data-engineering R projects: automated ingestion, tidying, and pipelines. The same workflow spine as r-science (whiteboard -> plan -> tests -> implement -> verify -> benchmark/optimise -> review), adapted so the product is datasets someone else can trust — contract-validated at every boundary, idempotent, reproducible from raw. Depends on the upstream Posit plugins for general developer, GitHub, and r-lib skills.",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./r-data/conventions",
+        "./r-data/whiteboard",
+        "./r-data/plan",
+        "./r-data/tests",
+        "./r-data/implement",
+        "./r-data/verify",
+        "./r-data/benchmark-optimise",
+        "./r-data/review",
+        "./r-science/r-oop",
+        "./ctx/commands/gc-artefacts",
+        "./ctx/commands/seal",
+        "./ctx/commands/unseal"
+      ],
+      "dependencies": [
+        { "name": "posit-dev", "marketplace": "posit-dev-skills" },
+        { "name": "github", "marketplace": "posit-dev-skills" },
+        { "name": "r-lib", "marketplace": "posit-dev-skills" }
       ]
     },
     {

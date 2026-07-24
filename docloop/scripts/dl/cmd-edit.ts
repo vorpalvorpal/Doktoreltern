@@ -13,6 +13,7 @@ import { refOf, parseRef } from './refs';
 import { canonicalize } from './canonical';
 import { recordWrite } from './journal';
 import { checkWorkspace } from './checkcore';
+import { isDocPath } from './docs';
 
 function formatShift(shift: ShiftEntry[]): string {
   if (shift.length === 0) return 'none';
@@ -23,6 +24,9 @@ export async function cmdEdit(ws: string, positional: string[], stdin: string): 
   const [docRef] = positional;
   if (!docRef) throw new Error('usage: dl edit <doc>@<ref> (ops on stdin)');
   const { doc: docName, hash } = parseRef(docRef);
+  // Path-qualified doc ids are legal (`nodes/16/design.md`), but only doc
+  // paths: never `threads/…`, `archive/…`, or a traversal like `../x.md`.
+  if (!isDocPath(docName)) throw new Error(`not a reviewable doc path "${docName}"`);
 
   let source: string;
   try {

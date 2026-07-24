@@ -64,6 +64,18 @@ class TestNextMove:
         run = D.NodeRun(fidelity="interface", cursor=D.TEST)
         assert D.next_move(run, m, 1) == D.TEST
 
+    def test_unstamped_internal_node_skips_the_floor_move(self):
+        # fidelity=None on a node with children: derived (#33) — no INTERFACE
+        # stamp of its own to raise, so deepening starts at DESIGN directly.
+        states = {1: D.NodeRun(fidelity=None), 2: run_at()}
+        m = D.build_model(states, {(1, 2)})
+        assert D.next_move(states[1], m, 1) == D.DESIGN
+
+    def test_unstamped_leaf_still_takes_the_floor_move(self):
+        states = {1: D.NodeRun(fidelity=None)}
+        m = D.build_model(states, set())
+        assert D.next_move(states[1], m, 1) == D.INTERFACE
+
 
 class TestRoute:
     def test_deepen_advances_cursor_and_gauges(self):
@@ -135,6 +147,30 @@ class TestModelSynth:
         m = D.build_model(states, edges, boundaries={1: [2, 3, 4]})
         cen = ctx_schedule.centrality(m)
         assert cen[2] >= 1 and cen[3] >= 1 and cen[4] >= 1
+
+    def test_unstamped_run_reaches_the_model_as_marker_absence(self):
+        # fidelity=None synthesizes *no* 📊 line — the scheduler must see the
+        # node as unstamped, not as an explicit stub.
+        m = D.build_model({1: D.NodeRun(fidelity=None)}, set())
+        assert ctx_schedule.raw_fidelity(m, 1) is None
+        assert ctx_schedule.declared_fidelity(m, 1) == "stub"   # default intact
+
+
+class TestDerivedFidelityRun:
+    def test_unstamped_parent_folds_correct_without_a_floor_move(self):
+        # end-to-end: the parent carries no stamp; the leaves take the floor
+        # move and deepen, and the parent's derived fidelity folds the tree.
+        states = {1: D.NodeRun(fidelity=None),
+                  2: D.NodeRun(fidelity="stub"), 3: D.NodeRun(fidelity="stub")}
+        edges = {(1, 2), (1, 3)}
+        disp = Script()
+        res = D.run(states, edges, disp, budget=100)
+        assert res.outcome == "folded_correct"
+        assert (2, D.INTERFACE) in disp.calls and (3, D.INTERFACE) in disp.calls
+        # with no stamp the parent has no glue of its own: its fidelity is read
+        # off the children, so once both leaves validate the fold terminates the
+        # run — the parent is never dispatched any move (INTERFACE included).
+        assert all(nd != 1 for nd, _ in disp.calls)
 
 
 class TestReadiness:
@@ -237,3 +273,131 @@ class TestTermination:
         res = D.run(states, set(), disp, roots=[1], budget=100)
         assert res.outcome == "folded_correct" and res.ticks == 0
         assert disp.calls == []
+
+
+# --- per-tick world reload (injected refresh) ---------------------------------
+class TestRefresh:
+    def test_refresh_called_at_top_of_every_tick(self):
+        states = {1: run_at()}
+        calls = {"n": 0}
+
+        def refresh():
+            calls["n"] += 1
+            return states, set(), None, None
+
+        disp = Script()
+        res = D.run(states, set(), disp, budget=100, refresh=refresh)
+        assert res.outcome == "folded_correct"
+        # 5 deepen dispatches + the terminal fold-check tick, each preceded
+        # by one refresh call.
+        assert res.ticks == 5
+        assert calls["n"] == res.ticks + 1
+
+    def test_refresh_called_under_budget_trip(self):
+        states = {1: run_at(), 2: run_at()}
+        edges = {(1, 2)}
+        calls = {"n": 0}
+
+        def refresh():
+            calls["n"] += 1
+            return states, edges, None, None
+
+        disp = Script()
+        res = D.run(states, edges, disp, budget=3, refresh=refresh)
+        assert res.outcome == "budget_tripped" and calls["n"] == 3
+
+    def test_driver_rebinds_world_from_refresh_return(self):
+        # The world handed to `run` is a stale snapshot; refresh returns a
+        # different states dict where #1 is already at interface. The driver
+        # must schedule off the refreshed world (DESIGN first, no floor move)
+        # and route mutations into *its* objects, not the stale ones.
+        stale = {1: D.NodeRun(fidelity="stub")}
+        fresh = {1: run_at(fid="interface")}
+        disp = Script()
+        res = D.run(stale, set(), disp, budget=100,
+                    refresh=lambda: (fresh, set(), None, None))
+        assert res.outcome == "folded_correct"
+        assert disp.calls[0] == (1, D.DESIGN)
+        assert (1, D.INTERFACE) not in disp.calls
+        assert fresh[1].done                       # mutations landed in the refreshed world
+        assert stale[1].fidelity == "stub" and not stale[1].done
+
+    def test_node_created_mid_run_is_dispatched_same_run(self):
+        # A dispatched move decomposes #1 during tick 1; refresh surfaces the
+        # new leaf #3 at the top of tick 2 — it joins the frontier and is
+        # driven to correct in the SAME run (the fold waits for it).
+        states = {1: run_at(), 2: run_at()}
+        edges = {(1, 2)}
+        calls = {"n": 0}
+
+        def refresh():
+            calls["n"] += 1
+            if calls["n"] == 2:
+                states[3] = D.NodeRun(fidelity="stub")
+                edges.add((1, 3))
+            return states, edges, None, None
+
+        disp = Script()
+        res = D.run(states, edges, disp, budget=100, refresh=refresh)
+        assert res.outcome == "folded_correct"
+        assert (3, D.INTERFACE) in disp.calls      # floored + deepened mid-run
+        assert states[3].done
+
+    def test_node_arriving_correct_joins_done_and_is_not_dispatched(self):
+        # #3 arrives via refresh already validated `correct` (done by another
+        # run, say). It must join the done set — never drawn a move — even
+        # though its low confidence would give it top raw priority.
+        states = {1: run_at(), 2: run_at()}
+        edges = {(1, 2)}
+        aspects = {2: ["a"]}
+        calls = {"n": 0}
+
+        def refresh():
+            calls["n"] += 1
+            if calls["n"] == 2:
+                states[3] = D.NodeRun(fidelity="correct", confidence="low")
+                edges.add((1, 3))
+                aspects[3] = ["x", "y", "z"]       # would outrank #1 and #2
+            return states, edges, None, aspects
+
+        disp = Script()
+        res = D.run(states, edges, disp, budget=100, refresh=refresh)
+        assert res.outcome == "folded_correct"
+        assert all(nd != 3 for nd, _ in disp.calls)
+
+    def test_roots_stay_as_derived_at_run_start(self):
+        # A new top-level root appearing mid-run does not join the termination
+        # condition: the run folds on the run-start roots even though #9 is
+        # nowhere near correct.
+        states = {1: run_at()}
+        edges = set()
+        calls = {"n": 0}
+
+        def refresh():
+            calls["n"] += 1
+            if calls["n"] == 2:
+                states[9] = run_at(fid="interface")   # parentless: a new root
+            return states, edges, None, None
+
+        disp = Script()
+        res = D.run(states, edges, disp, budget=100, refresh=refresh)
+        assert res.outcome == "folded_correct"
+        assert not states[9].done                  # never driven to correct
+        assert all(nd != 9 for nd, _ in disp.calls)
+
+    def test_identity_refresh_equivalent_to_no_refresh(self):
+        def world():
+            states = {1: run_at(), 2: run_at(), 3: run_at()}
+            return states, {(1, 2), (1, 3)}, {2: ["a"], 3: ["b"]}
+
+        s1, e1, a1 = world()
+        d1 = Script()
+        r1 = D.run(s1, e1, d1, aspects=a1, budget=100)
+
+        s2, e2, a2 = world()
+        d2 = Script()
+        r2 = D.run(s2, e2, d2, aspects=a2, budget=100,
+                   refresh=lambda: (s2, e2, None, a2))
+        assert r1.outcome == r2.outcome == "folded_correct"
+        assert r1.ticks == r2.ticks
+        assert d1.calls == d2.calls                # identical trajectories

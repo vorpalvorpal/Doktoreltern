@@ -68,7 +68,7 @@ lerna-debug.log*
 
 # Context-layer local stores (each its own git repo; local-only, like docloop/workspace)
 # The ctx_store node store (canonical post-#60; not tracked by the code repo):
-r-science/context/store/
+store/
 # artefact cache (tmp/art) + scratch:
 tmp/
 # local presentation-text transcripts (spirit-check only):

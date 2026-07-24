@@ -82,6 +82,99 @@ describe('renderDocList', () => {
     expect(host.querySelectorAll('.doc-item')).toHaveLength(3);
     expect(host.querySelectorAll('.doc-item.active')).toHaveLength(1);
   });
+
+  it('a flat workspace renders exactly the old flat list — no details elements', () => {
+    renderDocList(host, docs, 'doc.md', () => {});
+    expect(host.querySelectorAll('details')).toHaveLength(0);
+    expect(host.querySelectorAll('.doc-dir')).toHaveLength(0);
+    expect(host.querySelectorAll(':scope > .doc-item')).toHaveLength(3);
+  });
+});
+
+const nestedDocs: DocInfo[] = [
+  { name: 'doc.md', state: 'clean' },
+  { name: 'nodes/16/design.md', state: 'draft' },
+  { name: 'nodes/16/plan.md', state: 'clean' },
+  { name: 'nodes/17/notes.md', state: 'untracked' },
+];
+
+describe('renderDocList — path-qualified ids (doc tree)', () => {
+  it('groups nested ids into a <details class="doc-dir"> tree keyed by data-dir', () => {
+    renderDocList(host, nestedDocs, 'doc.md', () => {});
+    const dirs = Array.from(host.querySelectorAll<HTMLDetailsElement>('details[data-dir]'));
+    expect(dirs.map((d) => d.getAttribute('data-dir')).sort()).toEqual([
+      'nodes',
+      'nodes/16',
+      'nodes/17',
+    ]);
+    // Every details level is a .doc-dir li with a .doc-dir-name summary.
+    for (const d of dirs) {
+      expect(d.closest('li')?.classList.contains('doc-dir')).toBe(true);
+      expect(d.querySelector(':scope > summary')?.classList.contains('doc-dir-name')).toBe(true);
+    }
+    // nodes/16 nests inside nodes; its docs nest inside it.
+    const nodes16 = host.querySelector('details[data-dir="nodes/16"]');
+    expect(nodes16?.closest('details[data-dir="nodes"]')).not.toBeNull();
+    const leaves = Array.from(nodes16?.querySelectorAll('.doc-item') ?? []);
+    expect(leaves.map((l) => l.querySelector('.doc-name')?.textContent)).toEqual([
+      'design.md',
+      'plan.md',
+    ]);
+  });
+
+  it('labels are basenames with the full path in title; flat docs get no title', () => {
+    renderDocList(host, nestedDocs, 'doc.md', () => {});
+    const names = Array.from(host.querySelectorAll<HTMLElement>('.doc-name'));
+    const byText = (t: string) => names.filter((n) => n.textContent === t);
+    expect(byText('design.md')[0].title).toBe('nodes/16/design.md');
+    expect(byText('notes.md')[0].title).toBe('nodes/17/notes.md');
+    expect(byText('doc.md')[0].title).toBe('');
+  });
+
+  it('a never-seen dir starts open iff it is on the active doc’s path', () => {
+    renderDocList(host, nestedDocs, 'nodes/16/design.md', () => {});
+    const open = (dir: string) =>
+      host.querySelector<HTMLDetailsElement>(`details[data-dir="${dir}"]`)!.open;
+    expect(open('nodes')).toBe(true);
+    expect(open('nodes/16')).toBe(true);
+    expect(open('nodes/17')).toBe(false);
+  });
+
+  it('expand/collapse choices survive a re-render (collectDirState)', () => {
+    renderDocList(host, nestedDocs, 'nodes/16/design.md', () => {});
+    // The human closes nodes/16 and opens nodes/17…
+    host.querySelector<HTMLDetailsElement>('details[data-dir="nodes/16"]')!.open = false;
+    host.querySelector<HTMLDetailsElement>('details[data-dir="nodes/17"]')!.open = true;
+
+    // …and a state-flip re-render (same active doc) keeps both choices, even
+    // though the default for nodes/16 would be open (active doc inside it).
+    renderDocList(host, nestedDocs, 'nodes/16/design.md', () => {});
+    const open = (dir: string) =>
+      host.querySelector<HTMLDetailsElement>(`details[data-dir="${dir}"]`)!.open;
+    expect(open('nodes/16')).toBe(false);
+    expect(open('nodes/17')).toBe(true);
+    expect(open('nodes')).toBe(true);
+  });
+
+  it('clicking a nested doc calls onSelect with the FULL path', () => {
+    const onSelect = vi.fn();
+    renderDocList(host, nestedDocs, 'doc.md', onSelect);
+    const design = Array.from(host.querySelectorAll<HTMLElement>('.doc-item')).find(
+      (i) => i.querySelector('.doc-name')?.textContent === 'design.md',
+    );
+    design?.click();
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith('nodes/16/design.md');
+  });
+
+  it('the active nested doc is marked active and inert', () => {
+    const onSelect = vi.fn();
+    renderDocList(host, nestedDocs, 'nodes/16/design.md', onSelect);
+    const active = host.querySelector<HTMLElement>('.doc-item.active');
+    expect(active?.querySelector('.doc-name')?.textContent).toBe('design.md');
+    active?.click();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
 });
 
 const nodes: NodeEntry[] = [

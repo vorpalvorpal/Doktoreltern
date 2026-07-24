@@ -20,7 +20,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { extractAnchors, nextThreadId, unwrapAnchor } from '../../src/threads';
 import { addComment, listThreads, resolveThread as storeResolveThread } from '../../src/threads-store';
-import { trackedDocs } from './docs';
+import { trackedDocs, isDocPath } from './docs';
 import { canonicalize } from './canonical';
 import { refOf, parseRef } from './refs';
 import { splitBlocks } from './blocks';
@@ -96,6 +96,7 @@ export async function commentVerb(
   if (opts.block) {
     const [docPart, nPart] = opts.block.split(':');
     const { doc, hash } = parseRef(docPart);
+    if (!isDocPath(doc)) throw new Error(`not a reviewable doc path "${doc}"`);
     const bytes = readFileSync(join(ws, doc), 'utf8');
     if (refOf(bytes) !== hash) {
       throw new Error(`stale ref (doc is now ${doc}@${refOf(bytes)}) — re-read`);
@@ -103,6 +104,7 @@ export async function commentVerb(
     candidateDocs = [doc];
     blockRestrict = { n: Number(nPart) };
   } else if (opts.doc) {
+    if (!isDocPath(opts.doc)) throw new Error(`not a reviewable doc path "${opts.doc}"`);
     candidateDocs = [opts.doc];
   } else {
     candidateDocs = await trackedDocs(ws);

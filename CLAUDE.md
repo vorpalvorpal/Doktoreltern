@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repository Is
 
-This repository implements **Doktoreltern** — a risk-first methodology for solo and small-scale technical projects (see `README.md` for the vision), delivered as a Claude Code marketplace (`doktoreltern`) of specialist *advisor* plugins. It currently contains two plugins: **`r-science`**, the science-centered R package development workflow spine and its supporting skills, and **`docloop`**, a small roster of narrow skills invoked live from inside a docloop review comment (see `docloop/skills/README.md`). Skills are structured markdown files that teach Claude specialized workflows; the primary skill artifacts are Markdown files consumed directly by Claude's skill system. There is also a Python **context substrate** under `r-science/context/` (the marker grammar, fold/linter, fetch adapter, and MCP server) with its own pytest suite — that is the one part of the repo with runnable, testable code.
+This repository implements **Doktoreltern** — a risk-first methodology for solo and small-scale technical projects (see `README.md` for the vision), delivered as a Claude Code marketplace (`doktoreltern`) of specialist *advisor* plugins. It currently contains three plugins: **`r-science`**, the science-centered R package development workflow spine and its supporting skills; **`r-data`**, the data-engineering variant of the same spine (automated ingestion/tidying projects); and **`docloop`**, a small roster of narrow skills invoked live from inside a docloop review comment (see `docloop/skills/README.md`). Skills are structured markdown files that teach Claude specialized workflows; the primary skill artifacts are Markdown files consumed directly by Claude's skill system. There is also a Python **context substrate** under `ctx/` at the repo root (the marker grammar, linter, node store, scheduler/driver, and MCP server — generic machinery owned by no plugin) with its own pytest suite, run from `ctx/` — that is the one part of the repo with runnable, testable code.
 
 The general-purpose R, GitHub, and publishing skills the workflow builds on are **not** in this repository: they live in the upstream [Posit Claude Skills](https://github.com/posit-dev/skills) marketplace (`posit-dev-skills`) and are pulled in as plugin **dependencies** declared in `.claude-plugin/marketplace.json`. This repository was previously a fork of that one; it no longer is.
 
 ## Source of Truth
 
-The **node tree is the source of truth** for the workflow redesign. It lives in the ctx node store at `r-science/context/store` — its **own git repo**, nested inside this one (read `nodes/<id>/node.md`; nesting is the tree). Whiteboards, archived docs, memory files, and session records are not authority. See `MAP.md` at the repo root for where everything lives.
+The **node tree is the source of truth** for the workflow redesign. It lives in the ctx node store at `store/` (repo root) — its **own git repo**, nested inside this one (read `nodes/<id>/node.md`; nesting is the tree). Whiteboards, archived docs, memory files, and session records are not authority. See `MAP.md` at the repo root for where everything lives.
 
 ## Utility Script
 
@@ -57,7 +57,7 @@ The body is instructions written **for Claude**, not end users — imperative, s
 
 ## Registering a New Skill
 
-There are two plugins, `r-science` and `docloop`. After creating the skill directory under the matching plugin's own directory (`r-science/` or `docloop/skills/`), add its path to that plugin's `skills` array in `.claude-plugin/marketplace.json`:
+There are three plugins, `r-science`, `r-data`, and `docloop`. After creating the skill directory under the matching plugin's own directory (`r-science/`, `r-data/`, or `docloop/skills/`), add its path to that plugin's `skills` array in `.claude-plugin/marketplace.json`:
 
 ```json
 {
@@ -77,7 +77,7 @@ To rely on a skill from the upstream Posit marketplace, do **not** copy it here 
 
 ## Skills
 
-`r-science/` holds the single `r-science` plugin's skills: the workflow spine (`conventions`, `whiteboard`, `plan`, `tests`, `implement`, `verify`, `benchmark-optimise`, `review`) plus `r-oop` and `r-bayes`. General developer, GitHub, r-lib, `open-source`, `ggsql`, `shiny`, and `quarto` skills are upstream dependencies, not part of this repository — see [What This Repository Is](#what-this-repository-is).
+`r-science/` holds the `r-science` plugin's skills: the workflow spine (`conventions`, `whiteboard`, `plan`, `tests`, `implement`, `verify`, `benchmark-optimise`, `review`) plus `r-oop` and `r-bayes`. `r-data/` holds the `r-data` plugin — the same spine adapted for data-engineering work (ingestion, tidying, pipelines), where correctness means schema + invariants + reconciliation rather than scientific-reference fidelity. General developer, GitHub, r-lib, `open-source`, `ggsql`, `shiny`, and `quarto` skills are upstream dependencies, not part of this repository — see [What This Repository Is](#what-this-repository-is).
 
 `docloop/skills/` holds the `docloop` plugin's skills — a narrow, purpose-built roster invoked live from inside a docloop review comment, not general-purpose workflow skills. See `docloop/skills/README.md` for the house rules (quick, text-in/text-out only, no mode changes) before adding to it.
 
