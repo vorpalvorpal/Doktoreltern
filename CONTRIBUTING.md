@@ -1,6 +1,6 @@
 # Contributing to Doktoreltern
 
-Thank you for your interest in contributing! Doktoreltern is delivered as a committee of specialist advisor plugins; this repository currently holds two: **`r-science`** (the science-centered R package development workflow) and **`docloop`** (narrow skills invoked live from inside a docloop review comment — see `docloop/skills/README.md` before touching those). This document provides guidelines for creating and submitting new skills, primarily for `r-science`.
+Thank you for your interest in contributing! Doktoreltern is delivered as a committee of specialist advisor plugins; this repository currently holds two: **`r-science`** (the science-centered R package development workflow) and **`r-data`** (the data-engineering variant of the same spine). The doc↔LLM review GUI and its live-invoked skills — formerly the in-repo `docloop` plugin — now live in the separate [`lektorat`](https://github.com/vorpalvorpal/lektorat) repository. This document provides guidelines for creating and submitting new skills, primarily for `r-science`.
 
 ## Quick Start
 
@@ -12,7 +12,7 @@ Thank you for your interest in contributing! Doktoreltern is delivered as a comm
 
 ### 1. Confirm it belongs here
 
-This repository holds the science-centered R package development skills under `r-science/` in the `r-science` plugin (plus the special-purpose `docloop` plugin's skills under `docloop/skills/`, which follow their own house rules). New `r-science` skills should support that workflow (planning, testing, implementation, verification, benchmarking, review, and the scientific-modelling knowledge skills).
+This repository holds the science-centered R package development skills under `r-science/` in the `r-science` plugin (and the data-engineering variant under `r-data/` in the `r-data` plugin). New `r-science` skills should support that workflow (planning, testing, implementation, verification, benchmarking, review, and the scientific-modelling knowledge skills).
 
 General-purpose R, GitHub, Shiny, Quarto, and publishing skills are **not** maintained here — they come from the upstream [Posit Claude Skills](https://github.com/posit-dev/skills) marketplace, which `r-science` declares as a dependency. If your skill belongs there, contribute it upstream instead.
 

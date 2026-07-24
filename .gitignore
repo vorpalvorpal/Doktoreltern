@@ -66,7 +66,7 @@ lerna-debug.log*
 .cache/
 .pytest_cache/
 
-# Context-layer local stores (each its own git repo; local-only, like docloop/workspace)
+# Context-layer local stores (each its own git repo; local-only, like the lektorat workspace)
 # The ctx_store node store (canonical post-#60; not tracked by the code repo):
 store/
 # artefact cache (tmp/art) + scratch:

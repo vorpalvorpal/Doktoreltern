@@ -30,7 +30,7 @@ r-science/context/
 ## The store on disk
 
 A **store** is a directory that is **its own git repository** (like
-`docloop/workspace/`). Its path is always passed in or read from the `CTX_STORE`
+the `lektorat` workspace). Its path is always passed in or read from the `CTX_STORE`
 env var — **never hardcoded**. Tests use a pytest `tmp_path` initialised with
 `git init`.
 
@@ -182,7 +182,7 @@ Node(number: int, body: str, state: str, state_reason: str | None,
 ## Adjudicated decisions (from Phase 1)
 
 - **A1 — Scope: single-writer MVP.** Local store behind the shell seam, git per
-  write. Concurrency / branch-merge / docloop-convergence deferred.
+  write. Concurrency / branch-merge / lektorat-convergence deferred.
 - **A2 — GitHub dropped entirely.** No projection, no export. `gh` gone.
 - **A3 — Layout: dir-per-node + `comments/`.** (Not one-file-per-node.)
 - **A4 — Integer identity kept.** Ids allocated locally via `_next`; the
