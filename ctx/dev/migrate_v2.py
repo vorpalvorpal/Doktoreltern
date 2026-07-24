@@ -86,11 +86,14 @@ def _fingerprint(model: "ctx_core.Model", node_id: int) -> dict:
     """
     node = model.nodes.get(node_id)
 
+    # {id: (status, text)} — comparing the text too catches a rationale marker
+    # whose body was truncated/altered while its id+status survived (a verbatim
+    # move parses identically, so a faithful split does not trip this).
     keyed: dict = {}
     for _kind, items in model.registries.items():
         for issue, kv in items:
             if issue == node_id:
-                keyed[kv.id] = kv.status
+                keyed[kv.id] = (kv.status, kv.text)
 
     registry_keys = sorted(
         key for key, issues in model.registry.items() if node_id in issues
