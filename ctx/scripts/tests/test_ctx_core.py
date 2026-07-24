@@ -289,6 +289,89 @@ class TestGlyphLedDrift:
 
 
 # --------------------------------------------------------------------------
+# Repeated single-value marker — a marker that is canonically one line per node
+# (boundary/blocked-by/design/confidence/fidelity/seal) appearing twice in one
+# text is accidental duplication; collate folds these last-wins and would
+# silently drop the first (finding F4b / store #24.q1). parse() must flag it.
+# --------------------------------------------------------------------------
+class TestRepeatedSingleValueMarker:
+    def test_two_boundary_lines_fire_one_finding_on_the_repeat(self):
+        """Two `🧱 Boundary:` lines → one finding, keyed 'parse', on the 2nd line.
+        Both markers still parse (the drop is collate's) — the finding is the guard."""
+        parsed = ctx_core.parse("🧱 Boundary: #16\n🧱 Boundary: #17\n")
+        assert len(parsed.markers) == 2
+        assert len(parsed.findings) == 1
+        assert parsed.findings[0].key == "parse"
+        assert parsed.findings[0].line == 2
+
+    def test_duplicate_fidelity_fires(self):
+        parsed = ctx_core.parse("📊 Fidelity: mock\n📊 Fidelity: correct\n")
+        assert len(parsed.findings) == 1
+        assert parsed.findings[0].line == 2
+
+    def test_duplicate_confidence_fires(self):
+        parsed = ctx_core.parse("🧭 Confidence: low\n🧭 Confidence: high\n")
+        assert len(parsed.findings) == 1
+
+    def test_duplicate_seal_fires(self):
+        parsed = ctx_core.parse("🔒 Seal: sealed\n🔒 Seal: unsealed\n")
+        assert len(parsed.findings) == 1
+
+    def test_duplicate_design_and_blocked_by_fire(self):
+        design = ctx_core.parse("📐 Design: #17\n📐 Design: #18\n")
+        blocked = ctx_core.parse("⛔ Blocked-by: #3\n⛔ Blocked-by: #4\n")
+        assert len(design.findings) == 1 and len(blocked.findings) == 1
+
+    def test_three_occurrences_fire_two_findings(self):
+        """Each repeat is flagged — 3 boundary lines → findings on lines 2 and 3."""
+        parsed = ctx_core.parse("🧱 Boundary: #16\n🧱 Boundary: #17\n🧱 Boundary: #18\n")
+        assert [f.line for f in parsed.findings] == [2, 3]
+
+    def test_single_boundary_is_clean(self):
+        """One correct marker (comma-joined, canonical) → no finding."""
+        parsed = ctx_core.parse("🧱 Boundary: #16, #17\n")
+        assert parsed.findings == []
+        assert len(parsed.markers) == 1
+
+    def test_boundary_block_form_is_one_marker_and_clean(self):
+        """Block form spanning several `>` lines is ONE marker — not a repeat."""
+        parsed = ctx_core.parse("🧱 Boundary:\n> #17, #18\n> #19\n")
+        assert len(parsed.markers) == 1
+        assert parsed.findings == []
+
+    def test_repeated_aspect_does_not_fire(self):
+        """aspect is list-valued (unioned across occurrences) — legitimately repeatable."""
+        parsed = ctx_core.parse("🏷️ aspect: numerics\n🏷️ aspect: portability\n")
+        assert parsed.findings == []
+        assert len(parsed.markers) == 2
+
+    def test_distinct_keyed_questions_do_not_fire(self):
+        """Keyed markers fold per-id; two Questions with distinct ids are repeatable."""
+        parsed = ctx_core.parse(
+            "❓ Question: #3.q1 open why\n❓ Question: #3.q2 open how\n")
+        assert parsed.findings == []
+
+    def test_repeated_alternative_does_not_fire(self):
+        """Alternatives are keyed (⚖️) — two distinct ids, no repeat finding."""
+        parsed = ctx_core.parse(
+            "⚖️ Alternative: #3.alt1 rejected foo\n"
+            "⚖️ Alternative: #3.alt2 viable bar\n")
+        assert parsed.findings == []
+
+    def test_repeated_cites_do_not_fire(self):
+        """Citation markers union into the registry — repeatable without loss."""
+        parsed = ctx_core.parse("📚 Cites: smith2020\n📚 Cites: jones2021\n")
+        assert parsed.findings == []
+
+    def test_cross_text_update_is_not_a_repeat(self):
+        """A single-value marker once per text is a legit fold (body then a later
+        comment), each parsed separately — neither call sees a repeat."""
+        body = ctx_core.parse("🧱 Boundary: #16\n")
+        comment = ctx_core.parse("🧱 Boundary: #17\n")
+        assert body.findings == [] and comment.findings == []
+
+
+# --------------------------------------------------------------------------
 # Collation → indices
 # --------------------------------------------------------------------------
 class TestCollate:

@@ -33,6 +33,11 @@ if not SERVER_PATH.exists():
     pytest.skip("server.py not present yet — Stage 5 (context MCP)",
                 allow_module_level=True)
 
+# Stage 2 (CONTRACT-v2.md) component-serving tests exercise a real store via
+# ctx_source/ctx_store rather than FakeSource for the C2.3/C2.6 gate.
+ctx_source = pytest.importorskip("ctx_source")
+ctx_store = pytest.importorskip("ctx_store")
+
 _spec = importlib.util.spec_from_file_location("ctx_server_under_test", SERVER_PATH)
 server = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(server)
@@ -50,7 +55,9 @@ class FakeSource:
                      comments=["c16-a", "c16-b"], purpose="the whole epic"),
             17: dict(title="Design node", body="design body", state="open",
                      state_reason=None, parent=16, children=[],
-                     comments=["c17-a"], purpose="one design slice"),
+                     comments=["c17-a"], purpose="one design slice",
+                     components={"design.md": "design comp text",
+                                 "spec.md": "spec comp text"}),
             20: dict(title="Sibling", body="sib body", state="open",
                      state_reason=None, parent=16, children=[],
                      comments=[], purpose="a sibling slice"),
@@ -137,3 +144,72 @@ class TestBrokenEdges:
         source.nodes[17]["parent"] = 16
         with pytest.raises(server.ContextError):
             server.get_context(source, 17)
+
+
+# --------------------------------------------------------------------------
+# Stage 2 (CONTRACT-v2.md) — optional `component` param on get_context /
+# _context_payload / the `context` MCP tool. component=None is unchanged
+# (C2.2); an allowed component serves that node's stored component text,
+# "" when a node (e.g. a v1 ancestor) lacks it (C2.5); an unknown component
+# name raises ContextError (C2.4).
+# --------------------------------------------------------------------------
+class TestGetContextComponentParam:
+    def test_c2_2_no_component_arg_is_unchanged_regression(self, source):
+        # Byte-for-byte the pre-Stage-2 behaviour: whole (concatenated) body.
+        views = server.get_context(source, 17)
+        assert [v.body for v in views] == ["root body", "design body"]
+
+    def test_c2_5_component_present_on_target_absent_on_v1_ancestor(self, source):
+        # node 17 carries a components dict (set up in FakeSource); node 16
+        # has no "components" key at all — the defensive .get() path.
+        views = server.get_context(source, 17, "spec.md")
+        by_number = {v.number: v.body for v in views}
+        assert by_number[16] == ""                     # v1 ancestor: absent
+        assert by_number[17] == "spec comp text"
+
+    def test_c2_4_unknown_component_raises_context_error(self, source):
+        with pytest.raises(server.ContextError) as exc:
+            server.get_context(source, 17, "bogus.md")
+        assert "bogus.md" in str(exc.value)
+
+    def test_c2_6_context_payload_carries_component_text(self, source):
+        payload = server._context_payload(source, 17, "spec.md")
+        by_number = {p["number"]: p["body"] for p in payload}
+        assert by_number[17] == "spec comp text"
+        assert by_number[16] == ""
+
+
+class TestGetContextComponentOverRealStore:
+    """C2.3/C2.6 gate: serve a synthetic v2 node's spec.md end-to-end through
+    ctx_store -> ctx_source.RepoSource -> server.get_context/_context_payload
+    (not FakeSource) — the real store integration proof the stage gate wants.
+    """
+
+    def test_c2_3_serves_real_v2_node_spec_md_through_get_context(self, tmp_path):
+        store_dir = tmp_path / "store"
+        ctx_store.init_store(str(store_dir))
+        parent = ctx_store.create_node(str(store_dir), "Epic", "# Epic\n")
+        child = ctx_store.create_node(
+            str(store_dir), "Design node", "# Design\n", parent=parent)
+        child_dir = store_dir / "nodes" / str(parent) / str(child)
+        child_dir.mkdir(parents=True, exist_ok=True)
+        (child_dir / "spec.md").write_text("Spec content.\n")
+
+        src = ctx_source.RepoSource(str(store_dir))
+        views = server.get_context(src, child, "spec.md")
+        by_number = {v.number: v.body for v in views}
+        assert by_number[child] == "Spec content.\n"
+        assert by_number[parent] == ""   # v1 ancestor, no spec.md
+
+    def test_c2_6_context_payload_over_real_store(self, tmp_path):
+        store_dir = tmp_path / "store"
+        ctx_store.init_store(str(store_dir))
+        node_id = ctx_store.create_node(str(store_dir), "T", "prose\n")
+        node_dir = store_dir / "nodes" / str(node_id)
+        (node_dir / "spec.md").write_text("Payload spec.\n")
+
+        src = ctx_source.RepoSource(str(store_dir))
+        payload = server._context_payload(src, node_id, "spec.md")
+        [entry] = payload
+        assert entry["number"] == node_id
+        assert entry["body"] == "Payload spec.\n"

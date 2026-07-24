@@ -243,6 +243,135 @@ class TestReadComments:
 
 
 # ---------------------------------------------------------------------------
+# v2 (CONTRACT-v2.md Stage 2) — read_components, symmetric with read_comments
+# ---------------------------------------------------------------------------
+
+class TestReadComponents:
+    def test_present_components_returned_in_fixed_order(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        node_dir = store / "nodes" / str(node_id)
+        # write out of _FILE_COMPONENTS order to prove the dict's key order is
+        # the fixed order, not insertion/write order.
+        (node_dir / "spec.md").write_text("S\n")
+        (node_dir / "design.md").write_text("D\n")
+        components = ctx_store.read_components(str(store), node_id)
+        assert components == {"design.md": "D\n", "spec.md": "S\n"}
+        assert list(components) == ["design.md", "spec.md"]
+
+    def test_absent_components_omitted_empty_dict(self, store):
+        node_id = ctx_store.create_node(str(store), "Body only", _valid_body())
+        assert ctx_store.read_components(str(store), node_id) == {}
+
+    def test_missing_node_dir_returns_empty_dict_never_raises(self, store):
+        assert ctx_store.read_components(str(store), 9999) == {}
+
+
+# ---------------------------------------------------------------------------
+# v2 (CONTRACT-v2.md Stage 3) — write_component (validated, edit-in-place)
+# ---------------------------------------------------------------------------
+
+class TestWriteComponent:
+    def test_c3_1_writes_file_one_commit_and_is_read_back(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        before_log = _commit_subjects(store)
+        ctx_store.write_component(str(store), node_id, "spec.md", "Spec.\n")
+        after_log = _commit_subjects(store)
+        assert len(after_log) == len(before_log) + 1
+        assert after_log[-1] == f"node #{node_id}: write spec.md"
+        assert ctx_store.read_components(str(store), node_id) == {"spec.md": "Spec.\n"}
+
+    def test_c3_2_rejects_malformed_body_writes_nothing(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        before_log = _commit_subjects(store)
+        with pytest.raises(ctx_store.ValidationError):
+            ctx_store.write_component(str(store), node_id, "spec.md", _malformed_body())
+        assert _commit_subjects(store) == before_log
+        assert not (store / "nodes" / str(node_id) / "spec.md").exists()
+        # [MEASURE TWICE]: unfiltered `git status --porcelain` — the store is
+        # byte-unchanged after a rejected write (an rtk hook can misreport a
+        # filtered diff/status as "identical" when it is not).
+        status = _git(store, "status", "--porcelain").stdout
+        assert status.strip() == ""
+
+    def test_c3_3_rejects_unknown_component_writes_nothing(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        before_log = _commit_subjects(store)
+        with pytest.raises(ctx_store.StoreError) as exc:
+            ctx_store.write_component(str(store), node_id, "notes.md", "Notes.\n")
+        assert not isinstance(exc.value, ctx_store.ValidationError)
+        assert "notes.md" in str(exc.value)
+        assert _commit_subjects(store) == before_log
+        assert not (store / "nodes" / str(node_id) / "notes.md").exists()
+        status = _git(store, "status", "--porcelain").stdout
+        assert status.strip() == ""
+
+    def test_c3_4_second_write_overwrites_in_place_and_commits_again(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        ctx_store.write_component(str(store), node_id, "spec.md", "First.\n")
+        before = len(_commit_subjects(store))
+        ctx_store.write_component(str(store), node_id, "spec.md", "Second.\n")
+        assert len(_commit_subjects(store)) == before + 1
+        assert ctx_store.read_components(str(store), node_id) == {"spec.md": "Second.\n"}
+
+    def test_write_component_raises_storeerror_for_missing_node(self, store):
+        with pytest.raises(ctx_store.StoreError):
+            ctx_store.write_component(str(store), 999, "spec.md", "Spec.\n")
+
+
+# ---------------------------------------------------------------------------
+# v2 (CONTRACT-v2.md Stage 3) — append_record (append-only .records/, no lint)
+# ---------------------------------------------------------------------------
+
+class TestAppendRecord:
+    def test_c3_5_creates_numbered_file_and_commits(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        before_log = _commit_subjects(store)
+        filename = ctx_store.append_record(str(store), node_id, "validate", "VERDICT: ok\n")
+        assert filename == "0001-validate.md"
+        record_path = store / "nodes" / str(node_id) / ".records" / filename
+        assert record_path.read_text() == "VERDICT: ok\n"
+        after_log = _commit_subjects(store)
+        assert len(after_log) == len(before_log) + 1
+        assert after_log[-1] == f"node #{node_id}: record {filename}"
+
+    def test_c3_5_second_call_is_monotonic_seq(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        ctx_store.append_record(str(store), node_id, "validate", "VERDICT: ok\n")
+        second = ctx_store.append_record(str(store), node_id, "construct", "VERDICT: ok\n")
+        assert second == "0002-construct.md"
+
+    def test_c3_5_no_lint_bare_verdict_line_accepted_verbatim(self, store):
+        # Records are evidence, not marker documents — fs_checks' L1 pass does
+        # not parse .records/, and append_record itself never calls _validate.
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        body = "VERDICT: ok - plain evidence note, no marker grammar here\n"
+        filename = ctx_store.append_record(str(store), node_id, "validate", body)
+        record_path = store / "nodes" / str(node_id) / ".records" / filename
+        assert record_path.read_text() == body
+
+    def test_c3_6_no_update_api_two_calls_both_present(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        first = ctx_store.append_record(str(store), node_id, "validate", "first\n")
+        second = ctx_store.append_record(str(store), node_id, "validate", "second\n")
+        assert first != second
+        records_dir = store / "nodes" / str(node_id) / ".records"
+        assert (records_dir / first).read_text() == "first\n"
+        assert (records_dir / second).read_text() == "second\n"
+        # There is deliberately no overwrite/update entry point for records.
+        assert not hasattr(ctx_store, "update_record")
+        assert not hasattr(ctx_store, "write_record")
+
+    def test_append_record_slugifies_move_name(self, store):
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        filename = ctx_store.append_record(str(store), node_id, "Interface Move!", "x\n")
+        assert filename == "0001-interface-move.md"
+
+    def test_append_record_raises_storeerror_for_missing_node(self, store):
+        with pytest.raises(ctx_store.StoreError):
+            ctx_store.append_record(str(store), 999, "validate", "x\n")
+
+
+# ---------------------------------------------------------------------------
 # R4 — read_nodes
 # ---------------------------------------------------------------------------
 
@@ -287,6 +416,91 @@ class TestReadNodes:
         nodes = ctx_store.read_nodes(str(store))
         model = ctx_core.collate(nodes)
         assert (parent_id, child_id) in model.tree_edges
+
+
+# ---------------------------------------------------------------------------
+# v2 (Stage 1, CONTRACT-v2.md) — component concat via read_nodes
+#
+# Synthetic v2 fixtures only (no dogfood backfill — the walking-skeleton store
+# is retired, CONTRACT-v2.md). Component files (design.md/spec.md/log.md) are
+# written directly beside node.md: create_node/add_comment don't know about
+# components yet (that's Stage 2/3), so these tests poke the filesystem
+# directly to build the tiny v2 worlds this stage's read path must handle.
+# ---------------------------------------------------------------------------
+
+class TestV2ComponentConcat:
+    def test_c1_1_v1_only_node_body_is_byte_identical(self, store):
+        # C1.1 — a node with only node.md (no components present) round-trips
+        # its body byte-for-byte, exactly as before v2 landed. [MEASURE TWICE]:
+        # confirm with an unfiltered `diff`, not just `==` (an rtk hook can
+        # filter shell diff output and misreport "identical").
+        body = "Some v1 prose.\n\nA second paragraph.\n"
+        ctx_store.create_node(str(store), "V1 node", body)
+        [node] = ctx_store.read_nodes(str(store))
+        assert node.body == body
+
+        expected = store / "expected_body.txt"
+        actual = store / "actual_body.txt"
+        expected.write_text(body)
+        actual.write_text(node.body)
+        result = subprocess.run(
+            ["diff", str(expected), str(actual)], capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stdout
+
+    def test_c1_2_full_concat_all_four_pieces(self, store):
+        # C1.2 — node.md "A\n" + design "D\n" + spec "S\n" + log "L\n"
+        node_id = ctx_store.create_node(str(store), "T", "A\n")
+        node_dir = store / "nodes" / str(node_id)
+        (node_dir / "design.md").write_text("D\n")
+        (node_dir / "spec.md").write_text("S\n")
+        (node_dir / "log.md").write_text("L\n")
+        [node] = ctx_store.read_nodes(str(store))
+        assert node.body == "A\n\n\nD\n\n\nS\n\n\nL\n"
+
+    def test_c1_3_thin_index_two_components_no_leading_blank(self, store):
+        # C1.3 — empty node.md body + design "D\n" + spec "S\n"; the empty
+        # node_body piece is filtered out, so no leading blank line appears.
+        node_id = ctx_store.create_node(str(store), "T", "")
+        node_dir = store / "nodes" / str(node_id)
+        (node_dir / "design.md").write_text("D\n")
+        (node_dir / "spec.md").write_text("S\n")
+        [node] = ctx_store.read_nodes(str(store))
+        assert node.body == "D\n\n\nS\n"
+
+    def test_c1_4_single_component_is_returned_verbatim(self, store):
+        # C1.4 — empty node.md body + only log "L\n" -> "L\n" verbatim (single
+        # present piece, no join at all).
+        node_id = ctx_store.create_node(str(store), "T", "")
+        node_dir = store / "nodes" / str(node_id)
+        (node_dir / "log.md").write_text("L\n")
+        [node] = ctx_store.read_nodes(str(store))
+        assert node.body == "L\n"
+
+    def test_c1_5_markers_gather_across_components_into_collate(self, store):
+        # C1.5 — a design.md marker and a spec.md marker on one node both
+        # surface in collate(read_nodes(...))'s model (the concat makes them
+        # one blob for parse()); a keyed id declared once in design.md and
+        # merely referenced as prose in spec.md stays a single registries
+        # entry — unique per node, not duplicated by the concatenation.
+        node_id = ctx_store.create_node(str(store), "T", "")
+        node_dir = store / "nodes" / str(node_id)
+        (node_dir / "design.md").write_text(
+            "🏷️ aspect: numerics\n"
+            f"❓ Question: #{node_id}.q1 open Does the combiner hold?\n"
+        )
+        (node_dir / "spec.md").write_text(
+            "📚 Cites: smith2020\n"
+            f"See #{node_id}.q1 above for the open question.\n"
+        )
+        model = ctx_core.collate(ctx_store.read_nodes(str(store)))
+        assert "numerics" in model.aspects[node_id]
+        assert node_id in model.registry["smith2020"]
+        questions = [
+            kv for (nid, kv) in model.registries[ctx_core.QUESTION] if nid == node_id
+        ]
+        assert len(questions) == 1
+        assert questions[0].id == f"#{node_id}.q1"
 
 
 # ---------------------------------------------------------------------------
@@ -440,6 +654,28 @@ class TestAddComment:
     def test_add_comment_raises_storeerror_for_missing_node(self, store):
         with pytest.raises(ctx_store.StoreError):
             ctx_store.add_comment(str(store), 999, "c1\n")
+
+    def test_c3_7_frozen_once_a_component_file_exists_mentions_log_and_records(self, store):
+        # D5: the moment ANY file component exists, .comments/ is frozen v1
+        # evidence — add_comment refuses, pointing at log.md / .records/.
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        ctx_store.write_component(str(store), node_id, "design.md", "Design.\n")
+        before_log = _commit_subjects(store)
+        with pytest.raises(ctx_store.StoreError) as exc:
+            ctx_store.add_comment(str(store), node_id, "c1\n")
+        message = str(exc.value)
+        assert "log.md" in message
+        assert ".records" in message
+        assert _commit_subjects(store) == before_log     # nothing written
+
+    def test_c3_7_plain_v1_node_add_comment_unaffected(self, store):
+        # Regression: a node with only node.md (no component files) is not
+        # frozen — existing add_comment behaviour is unchanged.
+        node_id = ctx_store.create_node(str(store), "T", _valid_body())
+        seq = ctx_store.add_comment(str(store), node_id, "c1\n")
+        assert seq == 1
+        [comment] = ctx_store.read_comments(str(store), node_id)
+        assert comment.text == "c1"
 
 
 class TestUpdateComment:

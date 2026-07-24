@@ -87,6 +87,7 @@ class RepoSource:
                 children=sorted(children.get(n, [])),
                 comments=[c.text for c in node.comments],
                 purpose=_purpose(node.body),
+                components=ctx_store.read_components(store, n),
             )
 
         # registry: key -> {key, issues}. Rich cite/eq metadata is future (Zotero, #21).

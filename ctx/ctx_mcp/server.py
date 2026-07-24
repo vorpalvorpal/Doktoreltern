@@ -8,9 +8,16 @@ they are tested with no network.
 
 `source` provides:
     source.nodes: dict[int, dict(title, body, state, state_reason,
-                                 parent, children, comments, purpose)]
+                                 parent, children, comments, purpose,
+                                 components)]
     source.registry: dict[key, entry]
     source.dead_ends: dict[issue, list[str]]
+
+Stage 2 (CONTRACT-v2.md): `get_context`/`_context_payload`/the `context` tool
+take an optional `component` naming one file component (design.md/spec.md/
+log.md) to serve instead of the concatenated body — `source.nodes[n]` is read
+defensively via `.get("components", {})` so a source with no components key
+(FakeSource, a v1-only node) still works.
 
 The MCP-SDK transport lives at the bottom of this file (``build_server``,
 ``build_live_server``, ``serve``). The SDK is imported lazily inside those, so the
@@ -20,6 +27,11 @@ SDK package (#41.q1, resolved).
 """
 class ContextError(Exception):
     """A structural fault while serving context (broken or cyclic edge)."""
+
+
+# v2 (CONTRACT-v2.md Stage 2) — the file components `get_context`/`context`
+# may be asked to serve instead of the concatenated whole body.
+_ALLOWED_COMPONENTS = ("design.md", "spec.md", "log.md")
 
 
 class NodeView:
@@ -67,13 +79,28 @@ def _ancestry(source, issue: int) -> list:
     return chain
 
 
-def get_context(source, issue: int) -> list:
-    """Ordered root→issue NodeViews (bodies + state only); the altitude rule."""
-    return [
-        NodeView(n, d["body"], d["state"], d.get("state_reason"))
-        for n in _ancestry(source, issue)
-        for d in (source.nodes[n],)
-    ]
+def get_context(source, issue: int, component: str | None = None) -> list:
+    """Ordered root→issue NodeViews (bodies + state only); the altitude rule.
+
+    `component` is None → today's behaviour exactly: each view's body is the
+    whole (concatenated) body. An allowed component name (`_ALLOWED_COMPONENTS`)
+    → each view's body becomes that node's stored component text instead, ""
+    when the node lacks it (expected for a v1 ancestor mid-migration) — read
+    defensively via `.get("components", {})` so a source with no components
+    key still works. Any other non-None value raises `ContextError` before any
+    node is touched.
+    """
+    if component is not None and component not in _ALLOWED_COMPONENTS:
+        raise ContextError(f"unknown component {component!r}")
+    views = []
+    for n in _ancestry(source, issue):
+        d = source.nodes[n]
+        if component is None:
+            body = d["body"]
+        else:
+            body = d.get("components", {}).get(component, "")
+        views.append(NodeView(n, body, d["state"], d.get("state_reason")))
+    return views
 
 
 def get_thread(source, issue: int) -> list:
@@ -123,11 +150,11 @@ def query_deadends(source, scope: int) -> list:
 # MCP-SDK transport (lazy: the SDK is imported only when a server is built, so
 # the pure functions above stay importable and testable without `mcp`).
 # ---------------------------------------------------------------------------
-def _context_payload(source, issue):
+def _context_payload(source, issue, component: str | None = None):
     return [
         {"number": v.number, "body": v.body,
          "state": v.state, "state_reason": v.state_reason}
-        for v in get_context(source, issue)
+        for v in get_context(source, issue, component)
     ]
 
 
@@ -141,9 +168,13 @@ def _register(app, get_source):
     """
 
     @app.tool()
-    def context(issue: int):
-        """Ancestor path root→issue (bodies + state only; the altitude rule)."""
-        return _context_payload(get_source(), issue)
+    def context(issue: int, component: str | None = None):
+        """Ancestor path root→issue (bodies + state only; the altitude rule).
+
+        `component`: optional file component name ("design.md"/"spec.md"/
+        "log.md") to serve instead of the concatenated body.
+        """
+        return _context_payload(get_source(), issue, component)
 
     @app.tool()
     def thread(issue: int):
