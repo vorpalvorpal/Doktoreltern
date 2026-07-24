@@ -1,7 +1,0 @@
-node_modules/
-dist/
-coverage/
-workspace/
-*.log
-ideas.md
-model-feedback.md

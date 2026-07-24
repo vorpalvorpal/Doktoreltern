@@ -8,7 +8,7 @@
     "description": "Doktoreltern - a risk-first methodology for solo and small-scale technical projects, delivered as a committee of specialist advisor plugins. The first advisor, r-science, is a correctness-first, functional-by-default workflow for science-centered R package development (whiteboard -> plan -> tests -> implement -> verify -> benchmark/optimise -> review), depending on the upstream Posit skills for general-purpose R, GitHub, and publishing workflows.",
     "version": "0.2.0"
   },
-  "allowCrossMarketplaceDependenciesOn": ["posit-dev-skills"],
+  "allowCrossMarketplaceDependenciesOn": ["posit-dev-skills", "lektorat"],
   "plugins": [
     {
       "name": "r-science",
@@ -38,7 +38,8 @@
         { "name": "open-source", "marketplace": "posit-dev-skills" },
         { "name": "ggsql", "marketplace": "posit-dev-skills" },
         { "name": "shiny", "marketplace": "posit-dev-skills" },
-        { "name": "quarto", "marketplace": "posit-dev-skills" }
+        { "name": "quarto", "marketplace": "posit-dev-skills" },
+        { "name": "lektorat", "marketplace": "lektorat" }
       ]
     },
     {
@@ -64,15 +65,6 @@
         { "name": "posit-dev", "marketplace": "posit-dev-skills" },
         { "name": "github", "marketplace": "posit-dev-skills" },
         { "name": "r-lib", "marketplace": "posit-dev-skills" }
-      ]
-    },
-    {
-      "name": "docloop",
-      "description": "Skills invoked live from inside a docloop review comment (a slash command typed while composing, resolved synchronously via the Claude Agent SDK — see docloop/skills/README.md). Narrow, self-contained, text-in/text-out only — no filesystem/Bash access, no mode changes.",
-      "source": "./",
-      "strict": false,
-      "skills": [
-        "./docloop/skills/example"
       ]
     }
   ]

@@ -71,7 +71,7 @@ grep -rn 'api.github.com\|GITHUB_TOKEN\|GH_TOKEN\|gh issue\|gh api\|gh repo\|_de
 
 ## After code lands (separate, not a code commit)
 
-Update **design.md:140** in `docloop/workspace/` from "*Decision leaning …
-not yet implemented*" to implemented, via a docloop turn (`dl edit` / `dl
+Update **design.md:140** in the `lektorat` workspace from "*Decision leaning …
+not yet implemented*" to implemented, via a lektorat turn (`lk edit` / `lk
 commit`). Update the workflow-redesign memory note to mark #60's store migration
 done. Neither belongs in the code-repo PR.

@@ -8,12 +8,12 @@ in this repo is a working surface or a historical record, not authority.
 
 ## Where things live
 
-- **Active whiteboards** — `docloop/workspace/*.md` (currently
-  `whiteboard-restructure.md`). Whiteboards may **not** be cited as
-  authority (store node #62): settled material is extracted into the tree
-  and deleted from the whiteboard.
-- **Archived whiteboards / drained move docs** —
-  `docloop/workspace/archive/` (design, plan, construct, validate,
+- **Active whiteboards** — the `lektorat` clone's `workspace/*.md`
+  (local-only, gitignored; e.g. `whiteboard-restructure.md`). Whiteboards
+  may **not** be cited as authority (store node #62): settled material is
+  extracted into the tree and deleted from the whiteboard.
+- **Archived whiteboards / drained move docs** — the `lektorat` clone's
+  `workspace/archive/` (design, plan, construct, validate,
   artefact-ownership).
 - **Research reports** — `research/` (the artefact-ownership survey plus
   six prior-art reports under `research/third-party-review/`).
@@ -25,8 +25,10 @@ in this repo is a working surface or a historical record, not authority.
   of the active workflow. See `archive/dogfood/ARCHIVED.md`.
 - **Substrate code** — `ctx/scripts` and `ctx/ctx_mcp` (generic, no plugin
   owns it); run pytest from `ctx/`.
-- **The docloop app** — `docloop/`; run vitest from `docloop/`.
-- **Taking a docloop turn** — `docloop/HANDOFF.md`.
+- **The lektorat app** — the separate
+  [`lektorat`](https://github.com/vorpalvorpal/lektorat) repository; run
+  vitest from its root.
+- **Taking a lektorat turn** — `HANDOFF.md` in the `lektorat` repo.
 - **r-science skills** — `r-science/<skill>/SKILL.md`.
 - **r-data skills** — `r-data/<skill>/SKILL.md` (data-engineering variant
   of the spine).

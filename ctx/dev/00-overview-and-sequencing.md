@@ -68,14 +68,14 @@ conftest) and Stage 4's gate is global. Do not parallelise.
 ## Deliverable that is NOT code
 
 design.md:140 currently reads "*Decision leaning (t12) … not yet implemented*".
-Once this lands, that line becomes *implemented*. That edit is a **docloop turn**
-in `docloop/workspace/`, not a code-repo commit — do it there, separately.
+Once this lands, that line becomes *implemented*. That edit is a **lektorat turn**
+in the `lektorat` workspace, not a code-repo commit — do it there, separately.
 
 ## Deferred (explicitly out of scope — do not build now)
 
 - Concurrent multi-fork writes; branch/merge mirroring the fork-tree.
 - Batching many writes into one logical "turn" commit (MVP = one commit per call).
-- Converging the store with docloop's workspace as a single HITL surface
+- Converging the store with lektorat's workspace as a single HITL surface
   (design.md "build once" — a later research project).
 - Any GitHub projection/export.
 
