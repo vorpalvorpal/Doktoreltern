@@ -2,10 +2,10 @@
   "repo": "pcvelz/superpowers",
   "comment": "Upstream superpowers paths we have forked from or reference. The watch workflow records each path's tree/blob SHA and alerts when it changes. SHAs are seeded on first run.",
   "tracked": {
-    "skills/subagent-driven-development": "5194c7ffe4abc71edc8f55c947101c08b28a4b1b",
+    "skills/subagent-driven-development": "8cb148ec49e078e9f0f4cdcaa4aa9cf4efb97936",
     "skills/writing-skills/persuasion-principles.md": "5f248f2d3a8f86bde0123fa10c6410b59149714d",
-    "skills/brainstorming": "d6f9e206511ccce5078a77a2b4d7e7998af42654",
-    "skills/systematic-debugging": "e3e8f08e2c6fb4ba57c720fc64ec88fe831713c9",
+    "skills/brainstorming": "d4b27ea6f7ccab6fdfbd981b1f5116ec75958ee5",
+    "skills/systematic-debugging": "6bbf58acf5bbf91fb0b16ec97a7445ad9fb9d315",
     "skills/verification-before-completion": "a4cb0b69aaefeab540947a7f1642bdaad810e37a",
     "skills/using-git-worktrees": "8759c6d7a8a03fb37d4a2337cf139973ced2c031"
   },
