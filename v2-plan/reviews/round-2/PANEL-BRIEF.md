@@ -74,6 +74,9 @@ or digging in werkbank's or Doktoreltern v1's record.
   possibility needs to be pre specified". When you weigh a resident model against a thin driver
   (the Economist's round-2 model finds the driver cheaper in tokens), count what pre-specifying
   cost werkbank: a driver that grew from 10.8k to 49.3k lines.
+- Robin leans towards writing Doktoreltern itself in Rust, since he is interested in using Rust.
+  The file-format survey (`research/file-formats.md`) recommends TOML, and Rust's `toml_edit`
+  makes that stronger. The mod and SDK helper must be TypeScript whatever the tools are in.
 - The round-2 evidence auditor has reported (`reviews/round-2/evidence-auditor.md`) and its
   corrections are in the synthesis. The largest: version 1's scheduler **as built** is not the
   scheduler as designed (three self-reported confidence levels, leaves-first order, no tracer
