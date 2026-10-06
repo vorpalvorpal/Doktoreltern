@@ -144,3 +144,47 @@ and return one of: met; deviation with the failing check; fault. It holds no tab
 text. A rule moves into the tool only when the model has made the same choice three times on record, and the rule cites those three records.
 Compare on one slice: turns the session model spends, stops for Robin, and choices Robin later reverses, against the plain session.
 Not tested here; a haiku spike of the 8-of-8 case with this tool in place of hand dispatch would be the first evidence, at about $0.50.
+
+## B7. The three gate levels (added after the owner's second update)
+
+The table in synthesis §6 (mechanism, profile, gate plan) and questions 45 and 46. Read: the table; sampleTidy's `tests/testthat/` listing;
+the folder listings of v1's `r-data/` and `r-science/`. Nothing run.
+
+**What the record says.** Per-project gates are what sampleTidy already has: `test-coverage-map-lint.R`, `test-mock-scope-lint.R`,
+`test-payload-lint.R`, `test-e2e-corpus.R` and four corpus gates behind an environment variable [C, by file name]. They were added during
+the build as needs appeared. No profile supplied them and nobody chose them at spec time.
+
+**Story (a): the gate plan becomes a phase.** Before any code, a model drafts the plan from a profile's menu; because the plan is to be
+signed, it is audited; the audit finds gaps; each gap is a ruling. That is a spec-time loop of model judging, which is where 62% of run 3
+went. Its output is twenty items with pass marks. A pass mark set before the code exists is a guess: "mutation score at least 80%" is a
+coverage threshold under another name, which §6 itself rules out.
+
+**Story (b): Robin cannot tell a good plan from theatre.** He signs because the list looks thorough. Thoroughness is the theatre signal: a
+long plan of checks that exist is not a plan of checks that can fail (the Green Hat's point on §6.1). Six weeks later a wrong value reaches
+the database through a path no line covered, and every line was green.
+
+**Story (c): the signed plan freezes its own mistakes.** A gate that is too slow or accuses wrongly is Robin-owned, so the agent may not
+touch it; each one stops for him. In werkbank the harness's own faults were the commonest stop and 194 of 360 hours. If the answer is "the
+agent may tune parameters", then pass marks are not protected and signing them meant nothing.
+
+**Story (d): profiles multiply.** Four classes are named in the table before one project has used one. v1's two "advisors" are two trees of
+eight and nine folders [C, listing]. A profile is a rule set held as defaults; classes cross with languages (a pipeline in R, in Python,
+half-ported) and each crossing wants its own defaults. This is werkbank's rule growth with the rules moved into packs.
+
+**What I would do.**
+
+| Layer | Who owns | Form | Changes when |
+|---|---|---|---|
+| Outcomes | Robin, signed | A sentence in domain terms naming a wrong result that must not happen: "re-ingest changes nothing"; "no row is lost between file and database"; "a value below the reporting limit is never stored as zero" | He rules |
+| Checks | The agent | Mechanism, parameters, pass mark, time budget, each linked to one outcome | Freely; the change is listed in the report |
+| Proof | Mechanical | Each check has been shown red once on a planted violation of its outcome; Robin is shown that red run, as rows | The check changes |
+
+- Robin can judge this plan without engineering: every line is a thing he fears, and he has watched it fail. A check linked to no outcome is
+  theatre and lint can say so. An outcome with no check is a visible gap.
+- Weakening an outcome is refused; tuning a check is not a stop. That answers question 46.
+- The plan fits one screen. A check joins when an escape is on record, or when an outcome is new; never because a menu offers it.
+- No profile exists until two projects' plans share lines; then the shared lines are copied out. Until then the mechanism level and one
+  project's plan are all there is.
+- Seeded proof per check is the narrow form of §6.5 that I would keep: it is tied to an outcome, so it does not become a canary suite.
+
+Not verified: whether outcomes in this form cover what a numerical kernel needs; I have only sampleTidy in view.

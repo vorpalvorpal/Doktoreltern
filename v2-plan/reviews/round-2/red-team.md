@@ -1,6 +1,6 @@
 # Red Team / pre-mortem, round 2: V2-SYNTHESIS.md
 
-Detail, the scheduler hand-run and one haiku spike: `red-team-appendix.md` (B1 to B6). What I checked is at the end. Green Hat's round-2
+Detail, the scheduler hand-run and one haiku spike: `red-team-appendix.md` (B1 to B7). What I checked is at the end. Green Hat's round-2
 review landed as I finished; where we agree I say so and do not repeat her, and I attack three of her proposals under the modules.
 
 ## Verdict
@@ -58,7 +58,6 @@ a third of a bounded port, and no document records what the port buys Robin. Kil
 
 **6. A mods update on a Tuesday.** The SRE covers it. The Green Hat and I found the same exit separately: a settings hook on `SessionStart`
 (source `clear` or `compact`, 10,000 characters; `research/mods.md:63`) is not early access. Rung 1 minus trigger and cached prefix [U].
-
 ## The modules: what I would change
 
 Keep the Architect's rule and his split of `ready` from `rank`. Change the base and three seams.
@@ -78,12 +77,11 @@ thinnest" keeps eight modules alive from day one, so none can be found unnecessa
 (c) A shadow run of both versions on every monthly batch is two languages with no end date: her own question, "when does it stop", first.
 
 ## The scheduler
-
 I ran v1's `next_node` over the survey's ten port slices (B4; no model). The Green Hat ran it over R files and v1's store. All agree.
 - Three confidence settings (all low; units and ACIRL `.xls` low and the rest tentative; both stamped high): **the same order each time,
   the survey's own numbering,** units 8th of 11 and `.xls` 9th. A risky leaf has centrality 0, so its priority is 0 at any doubt.
-- With edges added making units a dependency of three slices, it moved to 2nd or 3rd. The order came from who drew the edges.
-- `next_node` already takes `pins` and `skips`: v1's advisor had driver controls by July.
+- With edges making units a dependency of three slices, it moved to 2nd or 3rd: the order came from who drew the edges. `next_node`
+  already takes `pins` and `skips`.
 
 **Habit:** adopt, with the true rule as its two lines: finish what a thing rests on, and before the skeleton hardens run the cheapest
 check that could kill the scariest leaf. That is "intensity", the best idea in the design and the one never coded.
@@ -110,7 +108,6 @@ Robin's stronger reason: a model "can make decisions so not every possibility ne
   not bind: werkbank halted 53 times for Robin. Count pauses by cause at rung 0; if context is under a quarter, A is not the first module.
 
 ## Tests and gates
-
 **The story where the weight returns.** (1) Owed kinds: the model assigns classes, and a class dispute is a ruling. (9) "A second read only
 where a ruling changes the spec, the plan or an accepted test" is not a ration: 71 of 100 werkbank cycles did. (5) A seeded defect per gate,
 re-proved on change, is a second suite; werkbank's canaries passed 0 of 13 by their own rule. (7) Tiers by what changed need a map from
@@ -126,22 +123,26 @@ milestone anyway. Prove the normaliser as the Green Hat specifies. Show divergen
 review he can do in any language. For gas readings, try the 12,656 legacy gas analyses as an independent oracle [U: their source is not in
 what I read]. Budget gates in Robin's rulings per slice and minutes per tier, written first. Build proposals 2, 3, 6 and 8 (with the
 Architect's exit-2 correction) and her oracle-free relations; hold 1, 4, 5 and 9 until an escape is recorded.
+**Mechanism, profile, gate plan (the owner's second update; B7).** Per project is what happened already: sampleTidy grew its own lint tests
+and corpus gates. Three ways it goes wrong. (a) Choosing gates at spec time becomes werkbank's phase 3: a model proposes, a model audits,
+Robin signs twenty items with pass marks nobody has evidence for. (b) A signed plan under consent makes every slow or wrong gate a stop for
+Robin (question 46); harness faults were werkbank's main cause of stops. (c) Four profiles are named before one project has run.
+**Fix:** Robin signs outcomes in domain terms ("re-ingest changes nothing", "no row is lost between file and database"); the agent owns
+mechanism, parameters and budgets. He judges a line by watching it go red once on a planted wrong row; a line with no feared outcome is
+theatre. One screen. A gate joins from a recorded escape, not from the menu. No profile until two projects' plans share lines.
 
 ## Open questions
-
 **Answers.** 1: unknown until pauses are counted by cause. 2: no, and it need not be (story 6). 3: state by note, rules by verbatim file.
 12: test it on sampleTidy's existing files first. 17 to 20: habit. 21: no step table. 25: it stops; plan for it. 30: a rulings budget, and a
-gate only on a recorded escape. 36: features and the corpus run in R. 42: thin where it matters. 44: so far a build tool with no build.
+gate only on a recorded escape. 45, 46: above. 36: features and the corpus run in R. 42: thin where it matters. 44: so far a build tool with no build.
 **To add.** What does a port buy Robin, in one sentence? What fraction of pauses is context? What survives ten notes? What order does
 `ready` print in? Who tests the wiring? **The three that matter most:** 36, 12, and the pauses-by-cause count behind 1.
 
 ## Rung 1
-
 Rung 0 first: the gas readings adapter or the corpus run, in R, in a plain session, with a `/handover` command, the settings hook, an
 append-only `CARRY.md` re-planted verbatim, and a tally (pauses by cause, re-tellings, rulings asked). Rung 1 is whatever the tally asks for.
 
 ## MUST-fix
-
 1. **§8: rung 0 is outside work, and "used" means used on it.** Write the abandon line now: a date by which sampleTidy has new commits made
    with the tool, and the stops and hours per slice above which Robin drops a rung.
 2. **§8 rung 1: rules, decisions and dead ends never pass through a model-written note.** Acceptance: 10 planted facts, 10 rewinds, 9 alive,
@@ -154,7 +155,6 @@ append-only `CARRY.md` re-planted verbatim, and a tally (pauses by cause, re-tel
 gate and divergences shown as rows. Rung 3, the baseline, moved to the front. Leaving questions open: none of the above needs them settled.
 
 ## What I checked
-
 Read: synthesis, MODULARITY, five round-2 reviews (not the Green Hat's appendix), `ctx_schedule.py`, the 8 August review (head), the port
 survey, sampleTidy `dev/STATE.md`, `v3-segments.md`. Counted: commits in three repositories; verbs. Ran: B4; B3 (25 haiku calls, $0.46,
 nothing left running). Not verified: the settings hook in practice; the legacy gas rows' source; R timings; the Economist's dollars.
