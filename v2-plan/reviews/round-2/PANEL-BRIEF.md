@@ -34,7 +34,11 @@ down for being undecided; help decide, or say what cheap evidence would.
 
 ## What Robin asks of you
 
-1. **The modules (synthesis §3, `MODULARITY.md`).** Are these the right seams and contracts?
+1. **The modules (synthesis §3, `MODULARITY.md`).** The split into A to H is one proposal. You
+   are free, and encouraged, to **propose a different split**: other seams, more or fewer
+   modules, a different base. Argue it from your lens and say what it makes easier to build
+   alone and easier to rethink. If you keep the proposed split: are these the right seams and
+   contracts?
    Which module is secretly two, which two are one, which contract will leak, which module will
    need a rethink first and what that would cost the others? Is each really useful alone?
 2. **The scheduler (§4).** Assess it at each of the three strengths. Read version 1's own record:
@@ -66,8 +70,12 @@ or digging in werkbank's or Doktoreltern v1's record.
 - His two feared failures: he does not trust the output, or it is too slow or too dear. His
   scarce resource is his attention.
 - He wants one terminal session he can watch and step into.
-- Figures taken from the first draft were corrected by the first evidence auditor. Figures new
-  in this synthesis (from the three new surveys) have not been audited.
+- The round-2 evidence auditor has reported (`reviews/round-2/evidence-auditor.md`) and its
+  corrections are in the synthesis. The largest: version 1's scheduler **as built** is not the
+  scheduler as designed (three self-reported confidence levels, leaves-first order, no tracer
+  path, no intensity). Read synthesis §4 as it now stands.
+- A separate survey of file formats for the structured files (TOML against CUE, Jsonnet, KDL,
+  Protobuf and others) is under way: `research/file-formats.md` when it lands.
 
 ## Your deliverable
 
