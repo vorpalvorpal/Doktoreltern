@@ -28,7 +28,12 @@ agent work in one Claude Code session that Robin can watch and step into.
 
 ## 1. What Robin wants
 
-1. A model orchestrator that uses judgement, with its context kept fresh mechanically.
+1. A model orchestrator that uses judgement, with its context kept fresh mechanically. The main
+   reason for a model here, in Robin's words: it "can make decisions so not every possibility
+   needs to be pre specified". Being able to talk to it is the second reason, and the lesser.
+   werkbank is the evidence for the first: its driver grew from 10.8k to 49.3k lines, and 52 of
+   the 55 patches in one release were ten missing rules. A cost comparison between a resident
+   model and a thin driver has to count that.
 2. One terminal session showing where things are, in which he can say "stop". Help from him is
    expected on early runs; his attention is the scarce thing.
 3. Parts that can be changed in or out: skills from others, the flow, the reset route, the

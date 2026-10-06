@@ -69,7 +69,11 @@ or digging in werkbank's or Doktoreltern v1's record.
   under it, usage per outcome is time. Never count throttle parks as a cost.
 - His two feared failures: he does not trust the output, or it is too slow or too dear. His
   scarce resource is his attention.
-- He wants one terminal session he can watch and step into.
+- He wants one terminal session he can watch and step into. But he names a more important reason
+  for a model orchestrator over a deterministic driver: it "can make decisions so not every
+  possibility needs to be pre specified". When you weigh a resident model against a thin driver
+  (the Economist's round-2 model finds the driver cheaper in tokens), count what pre-specifying
+  cost werkbank: a driver that grew from 10.8k to 49.3k lines.
 - The round-2 evidence auditor has reported (`reviews/round-2/evidence-auditor.md`) and its
   corrections are in the synthesis. The largest: version 1's scheduler **as built** is not the
   scheduler as designed (three self-reported confidence levels, leaves-first order, no tracer
