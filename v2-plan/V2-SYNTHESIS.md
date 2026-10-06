@@ -40,6 +40,10 @@ agent work in one Claude Code session that Robin can watch and step into.
    language of the software being built.
 4. Checkpoints that are machine-readable and lintable; notes that grow with the work; decisions
    written into the spec or plan, with git as the only log.
+4a. **No sprawling ruling documents [R, 2026-10-06, a design goal].** tdd-plan, which built
+   sampleTidy, left two ruling documents of about 59 KB each. Preventing that was one of the aims
+   in evolving tdd-plan into werkbank, and it did not succeed. A ruling should change the thing
+   it rules on and then be gone; what survives is the current state.
 5. Audits that hand back failing tests; findings grouped by root cause; fixes that do not breed
    new bugs.
 6. Gates that test what was edited, with the full suite kept for real releases.
@@ -307,6 +311,11 @@ Each rung is used before the next is built, and each can be the last.
 12. What must `render` contain so that a cold reader answers resume questions correctly, given
     the 9-of-9 failure in the first spike?
 13. Is "git is the log" enough, or are immutable per-dispatch records needed as well?
+47. What stops rulings accumulating into a document? Candidates: a ruling is an edit to an item
+    and has no entry of its own; a ruling that fixes behaviour becomes an example or a check, not
+    prose; size budgets per item and in total, enforced by lint; superseded text is deleted and
+    git keeps it. Why did werkbank's attempts fail (see `research/ruling-sprawl.md` when it
+    lands)?
 
 **Consent**
 
