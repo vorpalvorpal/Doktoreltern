@@ -38,8 +38,9 @@ audits, slices or skeletons.
 - **With a store,** `--then` is `render`. With a flow, the flow decides where the marks go.
 - **The route sits behind the two verbs.** Route F today; route A, a program on the SDK, or Robin
   typing `/compact` by hand are substitutes. This is what contains the risk of early-access mods.
-- **Taken from others: nothing.** The prior art has no tool that rewinds a live session. One
-  warning does apply: rules dropped at a compaction were broken 30 to 38% of the time afterwards
+- **Taken from others: the parts only.** Claude Code has an interactive `/rewind` and the SDK has
+  `forkSession`; nothing lets a program return a live session to a named mark and submit text.
+  (The module needs a name that does not collide with `/rewind`.) One warning does apply: rules dropped at a compaction were broken 30 to 38% of the time afterwards
   in one study, so the rules card must be inside every rewound context.
 
 ### B. Store
@@ -60,13 +61,15 @@ audits, slices or skeletons.
     records, serving the ancestor path and not the whole tree, and the **askability rule**: a
     reset is safe only if the store provably carries everything a decision needs. That is the
     panel's cold-reader test, reached independently.
-- **Reuse `ctx` itself?** About 1,000 of its 3,300 lines would carry (store, lint, serving), and
-  its 361 tests pass. Against: integer ids, the marker parser, R-science vocabulary, Python. A
+- **Reuse `ctx` itself?** Its store, lint and serving are about 1,000 lines and its 361 tests
+  pass, but the validated write and the linter both call the 1,172-line marker module that is
+  meant to be left behind. Also against: integer ids, R-science vocabulary, Python. A
   fresh small tool copying its shape looks cheaper than untangling it. Unsettled.
 
 ### C. Consent
 
-Doktoreltern did not end up with "free nodes and core nodes". It ended with something better:
+Doktoreltern did not end up with "free nodes and core nodes". Its design (never built, and
+enforced there only by a judgement check) ended with something better:
 **consent attaches to what the human decided, and is derived.** Every item Robin signed or ruled
 on is his; the rest is the agent's.
 
@@ -88,7 +91,7 @@ stops for Robin. It needs no separate rule.
   compare with a stated normaliser. sampleTidy's R version is the oracle for a port; after a
   port, the previous release is.
 - **Taken from others:** seeded-defect calibration (show each gate a known-bad input and require
-  it to fail; werkbank's canaries caught 0 of 13), protected baselines (expected values live
+  it to fail; werkbank's canaries never passed by their own rule in 13 runs), protected baselines (expected values live
   outside the agent's write scope and are hashed), the dbt result-file shape, diff-scoped
   mutation only.
 
@@ -137,7 +140,8 @@ belongs with A because it is needed the moment a session runs unattended, flow o
 
 ## 4. Things to sit with
 
-- **Residency.** Doktoreltern's own measurement argues against a resident orchestrator: 837
+- **Residency.** A measurement on werkbank v2, which Doktoreltern v1's driver was designed
+  against, argues against a resident orchestrator: 837
   turns, about 75% of spend, cost growing with the square of turns. Rewind is the answer on
   offer (F1: 78.7k tokens read from cache, 0.2k written, per reset), but it has not been shown
   over a real build, and it does nothing about plumbing turns. Module A is the cheapest way to

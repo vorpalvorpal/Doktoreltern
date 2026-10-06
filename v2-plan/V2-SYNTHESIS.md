@@ -47,8 +47,8 @@ evidence auditor):
 
 - Judging took 62% of run 3's spend and building 7% [M]. Rulings cost $10 to $45 a round; the
   fixes $0.4 to $3.7 [M].
-- 53 stops, 46 hours halted [M]. The suite grew from 10.7 to 85 minutes [M]. Canaries caught 0
-  of 13 [M]. The driver grew from 10.8k to 49.3k lines [M].
+- 53 stops, 46 hours halted [M]. The suite grew from 10.7 to 85 minutes [M]. Canaries: 0
+  of 13 runs passed by their original rule, though they surfaced about 17 defects [M]. The driver grew from 10.8k to 49.3k lines [M].
 - 25 of 27 audit finds were reachable earlier [M]. 14 of 24 test-able finds ended in spec or plan
   edits [M]. "Our own remediation became the leading source of new defects" (v3.3).
 - A model orchestrator with segmented context was tried in v3 and became a driver
@@ -56,19 +56,22 @@ evidence auditor):
 
 **From Doktoreltern v1** (`research/doktoreltern-design.md`, `research/doktoreltern-prior-art.md`):
 
-- Its store works: about 3,300 lines, 361 tests passing [M]. Its marker language (17 kinds, 1,172
-  lines) was named its largest liability.
+- Its `ctx` substrate is about 3,300 lines in all, with 361 tests passing [M]. The store-side part
+  is about 2,150 of those. More than half of that is one 1,172-line module (the marker grammar
+  for about 17 kinds, plus the invariant checks), which v1's own review named its largest
+  liability. The store's validated write and the linter both call it.
 - Its flow is skeleton-first: interfaces across the breadth, one tracer path to real, mocks just
   in time. It was exercised only on a retired seven-node toy.
-- Its own measurement argues against a resident orchestrator: 837 turns, about 75% of spend, cost
-  growing with the square of turns [M].
+- v1's driver was designed against a measurement taken on werkbank v2: a resident orchestrator of
+  837 turns took about 75% of spend, with cost growing with the square of turns [M]. v1 never ran
+  a resident orchestrator itself, and its own cost constants are unmeasured.
 - Its 8 August review ("lean on existing code") was never acted on.
 
 **From the spikes** (`research/spike-reset/`, `spike-live/`, `spike-f1/`):
 
 - A live session can be rewound: fork the session at a message through the Agent SDK, resume the
-  fork in the terminal from a mod ("route F"). 8 resets, nothing leaked, 78.7k tokens read from
-  cache and 0.2k written per reset [M, haiku, filler state].
+  fork in the terminal from a mod ("route F"). 8 resets, nothing leaked; the first request after
+  a reset read 73k to 80k tokens from cache and wrote about 0.2k [M, haiku, filler state].
 - The phone view followed the session across those resets [R observed]. Not shown: reconnecting
   later, an open dialog at reset, hours idle, 30 or more resets [U].
 
@@ -79,13 +82,15 @@ evidence auditor):
   use. No plain-agent baseline exists anywhere in the record.
 - Two hypotheses were bundled: the reset gives autonomy; the flow gives trust.
 - Small spikes: 8 of 8 haiku orchestrators stopped for the owner when a test and the spec
-  disagreed; a cold haiku reader gave confident wrong answers to resume questions 9 times of 9.
+  disagreed; a cold haiku reader gave confident wrong answers to the three resume questions in each of
+  three runs.
 - Cost model: about $570 for a 12-unit build, 80% band $300 to $1,200, about 10x a plain session
   [P, the Economist's estimate].
 
 **From sampleTidy** (`research/sampletidy-port.md`): 15.8k lines of R, 1,286 tests, no property
-or snapshot tests; the R version can serve as a reference for a port; 86 rulings live in the
-code; PDF parsing and the email trigger are not built. A full Rust port is the riskiest language
+or snapshot tests; the R version can serve as a reference for a port, though its run over the
+full corpus of real files has not happened yet; 86 rulings live in the code and two contract
+documents; PDF parsing and the email trigger are not built. A full Rust port is the riskiest language
 option (units, legacy `.xls`, and Robin cannot read Rust) [U, from the surveyor's knowledge].
 
 ## 3. The modules
@@ -122,7 +127,7 @@ cheap by design. H is unproven.
 
 Robin likes it and wants it assessed, without attachment [R].
 
-**What it is** (v1 nodes 16/32 and 16/33; `ctx/scripts/ctx_schedule.py`, 275 lines):
+**What was designed** (v1 nodes 16/32 and 16/33):
 
 - Work is a tree of items with cross-links. Each carries two gauges.
 - **Confidence** is provenance, never self-report: asserted < prior art < spiked < mock-validated
@@ -131,11 +136,26 @@ Robin likes it and wants it assessed, without attachment [R].
 - **Fidelity** is how built-out a thing is: stub < interface < mock < correct. A parent's
   fidelity is the lowest among the children it rests on.
 - **Priority = centrality x (1 - confidence).** Centrality comes from the graph: how much hangs
-  off the item. So the next thing worked on is the least certain, most depended-on thing.
+  off the item.
 - **Intensity:** the cheapest check that settles the doubt, from a thought experiment through a
   literature search and a spike to a full build.
 - Order: a floor pass first (interfaces across the breadth, one tracer path to real), then
   best-first deepening.
+
+**What was built** (`ctx/scripts/ctx_schedule.py`, 275 lines; checked by the round-2 evidence
+auditor) is simpler, and differs in ways that matter:
+
+- Confidence has three levels. It comes from the share of a node's questions that are resolved,
+  or else from a declared marker, which is self-report. The evidence ladder is not implemented.
+- The floor is "every frontier node at least at interface". The tracer path is not in the code.
+- After the floor, only nodes whose children and blockers are already correct may be deepened.
+  That is **leaves first**: the most central node comes last. The formula only ranks among nodes
+  that are ready at the same moment, and with three confidence values many tie.
+- Intensity does not exist in code.
+
+So "work on the least certain, most depended-on thing first" describes the design's intent, and
+the code does something else. v1's own research warned that stated confidence is overconfident
+and that this "directly misallocates the schedule".
 
 **Why it is attractive:** it is the only idea on the table that says *what to do next* by risk.
 It gives the skeleton-first flow a reason and a continuation: after the skeleton, widen where
@@ -143,10 +163,11 @@ doubt and dependence are highest. It makes "confidence" an evidence ladder that 
 mechanically, which ties tests to the plan. For a port, the risky parts (legacy `.xls`, units)
 would surface first, as spikes.
 
-**Why it is risky:** the weights were never tuned and it ran only on a toy. Its own record calls
-the inner loop open. As code that picks the next unit it is a second driver, which is the thing
-werkbank became. The prior art found no tool that selects work by a value over a graph, so
-there is nothing to copy and nothing to compare with.
+**Why it is risky:** the weights were never tuned and it ran only on a seven-node toy, where
+every step was a leaf on a happy path. As code that picks the next unit it is a second driver, which is the thing
+werkbank became. The prior art found tools that rank a
+graph (a layered ready queue, PageRank and critical path in beads' viewer) but none that ranks
+by doubt times dependence, so there is little to copy and nothing to compare with.
 
 **Three strengths it could be adopted at [P]:**
 
@@ -179,14 +200,14 @@ has to change is the cost.
 
 **Where werkbank's weight came from [M]:** every gate ran on everything, so the suite reached 85
 minutes; most spend went on models judging findings; each new failure class added driver code;
-the canaries meant to prove the gates caught nothing.
+the canaries meant to prove the gates never passed by their own rule.
 
 **Proposals [P]:**
 
 1. **A test kind is owed by the spec item, at writing time.** An item's class says what it owes:
    examples, a property over an input class, a comparison with a mirrored tool, a failure shape,
    a seam test from real producer into real consumer. Lint checks the debt is paid. The
-   Economist's estimate: about $1 a defect caught this way against about $17 caught by a late
+   Economist's rough proxy: about $1 a defect caught this way against about $17 caught by a late
    audit.
 2. **An oracle gate.** Where a reference exists (the R version; later, the last release), "same
    input, same output under a stated normaliser" is the strongest check available and needs no
@@ -214,12 +235,12 @@ line, and what it costs. No baseline exists to compare with.
 
 | For | Take | From |
 |---|---|---|
-| A | Nothing exists. One warning: rules dropped at compaction were then broken 30 to 38% of the time, so the rules card rides in every rewound context | prior art survey |
+| A | Claude Code's own `/rewind` (an interactive menu) and the SDK's `forkSession` are the parts; nothing lets a program return a live session to a named mark and submit text. One warning, from a single preprint: rules dropped at compaction were then broken 30 to 38% of the time, so the rules card rides in every rewound context | prior art survey; `research/mods.md` |
 | B | One file per item; suspect links (a child stores its parent's fingerprint) | doorstop |
-| B | A grammar tying a spec item to its tests, proving cover | OpenFastTrace |
-| B | Edge names only: `blocks`, `parent`, `discovered-from`, `supersedes` | beads |
+| B | A grammar tying a spec item to its tests, proving cover (the pattern; the tool is Java and GPL-3) | OpenFastTrace |
+| B | Edge names only: `blocks`, `parent-child`, `discovered-from`, `supersedes` | beads |
 | B | Validated write with a commit; immutable per-dispatch records; serving the ancestor path; the askability rule | Doktoreltern v1 |
-| C | Consent derived from what the human decided; park only what depends on it | Doktoreltern v1 |
+| C | Consent derived from what the human decided; park only what depends on it. In v1 this was designed as a judgement check and not built; the mechanical refusal is new here | Doktoreltern v1 |
 | D | Seeded-defect calibration; protected baselines; a result-file shape; diff-scoped mutation | several |
 | D | The verdict grammar and exit codes | stellwerk |
 | E | Isolation, budget caps and hooks that Claude Code already has; a diff computed by us | Claude Code; prior art |
@@ -228,7 +249,8 @@ line, and what it costs. No baseline exists to compare with.
 | F | Skeleton first; one real path before breadth | Doktoreltern v1; the first panel |
 | H | The gauges and the priority rule | Doktoreltern v1 |
 
-Rejected by the surveys: durable-execution engines, a tracker as the source of truth, coverage
+Rejected by the surveys: most durable-execution engines (two were left as possible spikes), a
+tracker as the source of truth, coverage
 thresholds, debate between models, parallel agents on dependent work.
 
 ## 8. A possible ladder
@@ -285,7 +307,7 @@ Each rung is used before the next is built, and each can be the last.
 **Flow**
 
 21. Is a step table needed, or do a rules card and skills suffice for a model orchestrator?
-22. Slice or file as the unit of work? What is a slice in a pipeline that is 45% reconcile logic?
+22. Slice or file as the unit of work? What is a slice in a pipeline that is 58% reconcile logic?
 23. Who writes interfaces, and how does a signature change after the skeleton?
 24. How much planning happens before the skeleton?
 25. What does the orchestrator do when a test and the spec disagree, given 8 of 8 stopped?
