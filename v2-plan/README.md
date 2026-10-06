@@ -7,7 +7,7 @@ werkbank.
 
 Read in this order:
 
-1. `SYNTHESIS.md`: where the thinking stands now. Start here.
+1. `V2-SYNTHESIS.md`: where the thinking stands now. Start here.
 2. `MODULARITY.md`: the module cut the synthesis builds on.
 3. `BRIEF.md`: Robin's original brief and interview answers.
 4. `SCOPING-DRAFT.md`: the first draft ("Leitstand"), as the first panel reviewed it. Superseded
