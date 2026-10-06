@@ -9,7 +9,7 @@ machine-local run state). The rule "a lower module never names a higher one" fai
 nodes 16/32, 16/33, 16/60/64; `spike-f1` report, helper and mod; `spike-live` mod and report §1; `mods.md`
 §3, §8. v1's `ctx` tests run: 361 passed, 1 skipped, 19 s. **Not verified:** whether a mod can start a
 process (none in the API list at `mods.md:30`). Nothing was spiked; no sub-agent. Interfaces, diagram,
-schema and the rung 1 specification are in the appendix.
+schema, rung 1 and **the split I would propose instead of A to H** (§7) are in the appendix.
 
 ## The modules
 

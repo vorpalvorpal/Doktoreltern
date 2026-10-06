@@ -269,3 +269,41 @@ anything whose real home is the product repository.
 - A cheap test of question 20, at rung 4: before each slice, record the model's unaided choice and the top
   of `rank`. Where they differ, note which the model took and whether a later slice was reopened because
   of it. Twelve slices give twelve rows; no extra runs.
+
+## 7. The split I would propose instead of A to H
+
+Added after the coordinator's note that a different split is invited. It gathers the changes in the main
+review into one table. Five things to build, one thing to write, in three layers.
+
+| | Piece | Replaces | Contract in one line | Alone, it gives | If it is wrong |
+|---|---|---|---|---|---|
+| 1 | **Session** (the mod, the fork helper, run state) | A, the in-session half of G | `mark`, `rewind --then`; a status command; a threshold; hold and go; Robin's signing channel | Handover and rewind in any long session (rung 1) | Swap the route behind the verbs; nothing else moves |
+| 2 | **Store** (items, records, owner rule, `ready`, `render`, derived gauges) | B, C, the structural half of H | `put get lint ready render record sign answer migrate` | A notes and questions store with consent, usable from any session or by hand | The header format: guarded by the six rules. `render`'s sections: one function |
+| 3 | **Gates** (stellwerk, plus a scope gate and the registry lint) | D | One command per check; 0, 1, 2 | As today | Per gate; each is a script |
+| 4 | **Work** (`begin`, `end`, the record) | The kernel of E | Base tree in; diff, scope and gate results, one immutable record out | An honest account of any piece of agent work, with or without a store | Delete it; gates still run by hand |
+| 5 | **Watchdog** (outside process) | The out-of-session half of G | Reads a timestamp; notifies; bounded relaunch | Unattended running | Delete it |
+| - | **Pack** (card, classes, wiring, gate scripts) | F, and the skills that were E's runners | Data and scripts only; no order, no conditions | Nothing alone, by design | Throw it away |
+| - | **Rank** (optional function) | The opinion half of H | Text in, ordered text out | Nothing alone | Never build it |
+
+Layers: 1, 2 and 3 are bases with no knowledge of each other. 4 sits on 3 and writes to 2 if a store is
+wired. 5 reads 1's run state. The pack names everything and is named by nothing.
+
+**What this makes easier to build alone.** Piece 1 is the whole of rung 1 and has no dependency on any
+other piece. Piece 2 is the whole of rung 2, and consent comes with it instead of needing a second
+contract across a boundary that carries nothing else. Piece 4 can be used at rung 3, the baseline, on a
+plain session: it is what produces the number later rungs are compared with.
+
+**What this makes easier to rethink.** The route (inside 1), the item format (inside 2, behind `get
+--json` and `render`), each gate (a script), the flow (the pack). The two things that stay expensive are
+the store's header and the sections of `render`; both now sit inside one piece with one owner.
+
+**What it gives up.** Consent and the chooser stop being things one can point at in a diagram. In exchange,
+neither is a module that cannot be deleted without the store, which is what they were.
+
+**Consistency with the round-2 evidence auditor.** My reading of `ctx_schedule.py` agrees with the
+corrected §4 (three declared levels, leaves first, no tracer path, no intensity). On reuse, the auditor is
+right that `ctx_store._validate` calls `ctx_core.parse` (`ctx_store.py:401-404`), so the write path is
+copied as a shape and not carried as code; §5 above already says so. `ctx_schedule.py` is the one file
+that could be taken as code, and only because it reads eight attributes of a model object that an adapter
+can supply without `ctx_core`. Format choice is left to the separate survey; the six rules in the main
+review hold for any text format.
