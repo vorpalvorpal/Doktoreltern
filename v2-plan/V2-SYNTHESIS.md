@@ -233,6 +233,20 @@ the canaries meant to prove the gates never passed by their own rule.
    where a ruling changes the spec, the plan or an accepted test.
 10. **Gates stay a module.** stellwerk owns them; nothing above knows a language.
 
+**Where gates are chosen [R raised, 2026-10-06; open].** A reviewer proposed SQL checks on the
+database "since the product is a DuckDB database". Robin's reply: *a* product is a DuckDB; perhaps
+the lesson is that gates are chosen project by project as part of writing the spec, or belong to
+flows aimed at particular classes of product. One way to hold both [P]:
+
+| Level | Holds | Lives in | Who owns it |
+|---|---|---|---|
+| Mechanism | How a kind of check runs and reports (oracle, property, mutation, a query against a database, row accounting) | The gates module; knows no project | The tool |
+| Profile | The usual set and defaults for a class of product (data pipeline into a database; numerical kernel; command-line tool; R package) | A pack. Version 1 had this shape: its r-science and r-data "advisors" were one spine with different standards | The pack |
+| Gate plan | Which checks this project owes, with their parameters, pass marks and time budgets | The spec, as items | Robin, by signing; under the consent rule the agent cannot weaken them |
+
+The proposals above then become a menu, and item 1 (a spec item says what it owes) is where the
+choice is made.
+
 **What is not known:** whether this is enough for Robin to trust output he cannot read line by
 line, and what it costs. No baseline exists to compare with.
 
@@ -326,6 +340,10 @@ Each rung is used before the next is built, and each can be the last.
 29. How is test quality measured without a model's opinion and without coverage?
 30. What stops gates from growing the way werkbank's did?
 31. What is the least model review that still catches what tests cannot?
+45. Are gates chosen per project at spec time, per class of product in a pack, or both? Who
+    proposes a project's gate plan, and how does Robin judge one he cannot evaluate technically?
+46. If the gate plan is Robin-owned, what happens when a gate turns out wrong or too slow
+    mid-build?
 
 **Trust, cost and stopping**
 
