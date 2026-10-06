@@ -1,0 +1,5 @@
+.venv/
+runs/*/sock
+__pycache__/
+mod/.claude-plugin/types/
+runs/
