@@ -254,6 +254,77 @@ choice is made.
 **What is not known:** whether this is enough for Robin to trust output he cannot read line by
 line, and what it costs. No baseline exists to compare with.
 
+## 6a. Keeping rulings from becoming documents
+
+A design goal [R]. tdd-plan left sampleTidy with two ruling documents of about 59 KB each, and
+werkbank was meant to stop that and did not. The evidence is in `research/ruling-sprawl.md`, which
+classified all 83 numbered rulings in sampleTidy.
+
+**What the sprawl is made of [M]:**
+
+| Kind of ruling | Count |
+|---|---|
+| Behaviour now fully encoded in code and tests, so the prose is redundant | 43 (59% of the bytes) |
+| Superseded or amended by a later ruling | 14 |
+| Rationale or bug history only | 12 |
+| A process rule for agents | 6 |
+| Prose is the only record of the decision | 5 |
+| Near-duplicate | 2 |
+| Open question | 1 |
+
+- The contract grew from 25 KB to 114 KB in 25 days, 94% by additions [M]. About a quarter of the
+  text is live, and a fresh agent adding a lab adapter needs about 16 KB of the 118 KB [inferred].
+- werkbank moved the problem and did not shrink it: its changelog is 394 KB and its decision log
+  234 KB after 17 days; stellwerk's contract is 230 KB and its adjudications ledger 2.2 MB [M].
+  History went into ledgers, and nothing capped a ledger.
+
+**Why it happens, in order of weight** (the ranking is the surveyor's judgement):
+
+1. Rulings were only ever added. Each audit round appended an entry; nothing forced an edit or a
+   deletion, and nobody owned pruning.
+2. Rationale and measurements had no other home. Agents were asked to measure and show it, and
+   the ruling was the only lasting place for the result (roughly 35 to 45% of the bytes).
+3. The thing ruled on was frozen or owned by someone else, so a ruling amended it by reference:
+   "A62 refines A11" became a new entry beside A11.
+4. Ids locked entries in. The rulings are cited from more than 600 places in code and tests, so a
+   dead entry could not be deleted.
+5. Deleting felt unsafe, because an audit might reopen the question.
+
+**Proposals [P]:**
+
+1. **A ruling has no entry of its own.** It is an edit to the item it rules on. A signed item
+   stays editable through a ruling, with Robin's consent where it is his; nothing is ever amended
+   by a note beside it. (Removes causes 1 and 3. It is also a reason not to make signed items
+   immutable.)
+2. **Ids belong to items only.** Code and tests cite the item, which lives on, and never a
+   ruling. (Removes cause 4.)
+3. **A ruling that fixes behaviour becomes an example row or a check,** and its prose is deleted
+   once the check exists. This is the same move as "Robin signs outcomes; each check ties to one"
+   in section 6.
+4. **Supersede by deleting.** Git keeps what was there.
+5. **Rationale is a sentence or two in the commit message of the edit. Measurements go in the
+   record of the piece of work that made them,** which is immutable, may be pointed to from an
+   item, and is never loaded into context by default. (Removes cause 2.)
+6. **Rules for agents live in one small fixed file,** separate from product decisions, re-planted
+   word for word and held under the hook's size limit (`research/hook-context-cap.md`). The limit
+   is treated as a useful constraint.
+7. **A short, capped list of dead ends,** so a ruled-out mistake stays ruled out without keeping
+   the argument. (Answers cause 5.)
+8. **Size budgets per item and in total, checked by lint.** Going over is a prompt to prune.
+9. **Pruning has an owner and a moment:** the end of each piece of work.
+
+The surveyor's estimate is that this would have taken sampleTidy's 118 KB to about 29 KB
+[inferred].
+
+**What this asks of the modules:** items must be editable in place by a ruling; the record of a
+piece of work must exist as the home for evidence; and whatever carries rules across a reset
+carries a small fixed file, never an accumulating one.
+
+**Not known:** whether deleting a superseded ruling leads audits to raise it again; whether one
+or two sentences in a commit message is enough rationale when a decision is questioned months
+later, given that agents rarely read commit messages; and where the five prose-only decisions
+belong (probably in the statement of the item they concern).
+
 ## 7. What to take from others
 
 | For | Take | From |
@@ -314,8 +385,11 @@ Each rung is used before the next is built, and each can be the last.
 47. What stops rulings accumulating into a document? Candidates: a ruling is an edit to an item
     and has no entry of its own; a ruling that fixes behaviour becomes an example or a check, not
     prose; size budgets per item and in total, enforced by lint; superseded text is deleted and
-    git keeps it. Why did werkbank's attempts fail (see `research/ruling-sprawl.md` when it
-    lands)?
+    git keeps it. Section 6a proposes an answer.
+48. Does deleting a superseded ruling make audits raise it again? Is a capped list of dead ends
+    enough to prevent that?
+49. Where do measurements and evidence live, if not in the ruling, and how does an agent find
+    them when it needs them?
 
 **Consent**
 
@@ -388,3 +462,40 @@ Each rung is used before the next is built, and each can be the last.
 3. Is section 6 enough to give tests and gates that earn trust without werkbank's weight?
 4. Which open questions matter most, which are missing, and which can be answered cheaply now?
 5. What should be on rung 1, and what would make it useful to Robin in a week?
+
+## 11. After the second panel
+
+The second panel reviewed sections 0 to 10 as they stood. Its seven reviews and their merger are
+in `reviews/round-2/` (start with `reviews/round-2/SYNTHESIS.md`). Sections 3, 5 and 8 above have
+**not** been rewritten to match; this is where the panel landed.
+
+- **The split.** Adopt the Architect's: Session (the reset, behind `handover`, `mark` and
+  `rewind`), Store, Gates, Work (`begin`, `end`, one immutable record), Watchdog, Pack, and an
+  optional Rank, meeting only in one wiring file. With the Bar Raiser's amendments: a **Carry**
+  file of fixed rules re-planted word for word; ownership as a rule over file paths checked by a
+  gate; `render` outside the store; the store deferred until plain files have failed twice.
+- **A test of modularity that can fail:** delete each piece for real; a second implementation
+  behind each contract; three sampleTidy sessions on a piece before the next is started; one
+  deliberate rethink drill.
+- **The first build is "rung 0", and it is not a module:** a real sampleTidy job in R in a plain
+  session, with the Carry file, a handover command, outcomes Robin has signed, and a tally of the
+  decisions the model made unaided. Three lenses back this; two kept the rewind first.
+- **A handover note written by a model is not a safe carrier.** In a haiku spike, three standing
+  rules survived one rewind in 2 of 9 cases and two rewinds in 0 of 9.
+- **The scheduler:** habit only, plus a risk list of at most ten entries; keep readiness and
+  never self-report confidence. Two replays found the formula decides little and ranks the risky
+  work late (legacy `.xls` 20th of 28). An unaided haiku also put the risky work last, and one
+  paragraph of advice moved it forward.
+- **Gates:** chosen per project. Robin signs outcomes in domain terms; the agent owns the checks,
+  each tied to one outcome and shown failing once on a planted fault. No product-class profile
+  until two projects share lines.
+- **A resident model against a thin driver:** a thin driver is cheaper in tokens by the
+  Economist's model. Robin's main reason for a model is that not every possibility has to be
+  specified in advance; werkbank's driver growth is the price of specifying. A hybrid was
+  proposed and is untested: the session's model calls one tool that runs until a decision is
+  needed.
+- **Format and language:** TOML stands (`research/file-formats.md`), more so if the tool is in
+  Rust, which Robin leans to.
+- **sampleTidy:** features in R first; no port slice before the R version has run over the full
+  corpus and the benefit of a port is stated.
+
